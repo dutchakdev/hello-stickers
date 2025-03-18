@@ -4,7 +4,7 @@ import * as https from 'https';
 import axios from 'axios';
 import { app } from 'electron';
 import db from '../database/db';
-import { downloadFile, extractFileId, downloadDriveFile } from './google-drive';
+import { downloadFile, extractFileId, downloadDriveFile, downloadDriveImage, directDownload } from './google-drive';
 import { preparePdfPath, getAppUrl, preparePdfWithPreview, createPdfPreview } from './pdf-utils';
 import { Product, Sticker } from '../database/db';
 import { v4 as uuidv4 } from 'uuid';
@@ -188,11 +188,26 @@ export async function syncWithNotion() {
     
     for (const page of enhancedResults) {
       try {
+        // Skip if title is empty
+        if (!page.properties?.Name?.title?.length) {
+          console.log('Skipping product with empty title');
+          results_stats.skipped++;
+          continue;
+        }
+        
+        // Get existing product to determine if we're creating or updating
+        const existingProduct = page.id ? db.getProduct(page.id) : null;
+        
+        // Process the product
         const processed = await processProduct(page, db);
+        
         if (processed) {
-          const action = processed.action || (processed.id ? 'updated' : 'created');
-          if (action === 'created') results_stats.created++;
-          else if (action === 'updated') results_stats.updated++;
+          // Update stats based on whether this was a new product or updated one
+          if (existingProduct) {
+            results_stats.updated++;
+          } else {
+            results_stats.created++;
+          }
         } else {
           results_stats.skipped++;
         }
@@ -255,106 +270,225 @@ function extractStandaloneStickers(properties: any): any[] {
 }
 
 // Function to process a product page
-async function processProduct(productPage: any, db: any) {
+export async function processProduct(
+  productPage: any,
+  db: any
+): Promise<Product | null> {
   try {
-    const productData = extractProductData(productPage);
-    
-    // Skip products without SKU
-    if (!productData.sku) {
-      console.log(`Skipping product without SKU: ${productData.name || 'Unnamed'}`);
+    const properties = productPage.properties;
+
+    // Skip if there's no title
+    if (!properties.Name?.title.length) {
+      console.log(`Skipping product with empty title`);
       return null;
     }
+
+    const sku = properties.SKU?.rich_text[0]?.plain_text || '';
     
     // Debugging for category property
-    console.log(`Processing product: SKU ${productData.sku}`);
-    console.log(`Category property:`, productPage.properties.Category);
+    console.log(`Processing product: SKU ${sku}`);
+    console.log(`Category property:`, properties.Category);
     
-    // Ensure type is set properly (fallback to category or 'Unknown')
-    if (!productData.type && productData.category) {
-      productData.type = productData.category;
-      console.log(`Using category "${productData.category}" as type for product ${productData.sku}`);
-    } else if (!productData.type) {
-      productData.type = 'Unknown';
-      console.log(`Using default "Unknown" type for product ${productData.sku}`);
-    }
-    
-    // Download image if available
-    if (productData.imageUrl) {
-      try {
-        const downloadResult = await downloadAsset(productData.imageUrl, 'image', productData.sku);
-        if (downloadResult) {
-          // Store both the app:// URL and the local path
-          productData.imageUrl = downloadResult.appUrl;
-          productData.localImagePath = downloadResult.localPath;
-          console.log(`Updated image URL to ${productData.imageUrl}`);
+    // Try to find image URL from multiple potential field names
+    let imageUrl = '';
+    const possibleImageFields = ['Image Link', 'Preview Image', 'Image', 'Product Image', 'Preview'];
+    for (const fieldName of possibleImageFields) {
+      if (properties[fieldName]?.url) {
+        imageUrl = properties[fieldName].url;
+        console.log(`Found image URL in field "${fieldName}": ${imageUrl}`);
+        break;
+      } else if (properties[fieldName]?.files && properties[fieldName].files.length > 0) {
+        // Check for files array (Notion images can be in files array)
+        const fileUrl = properties[fieldName].files[0].file?.url || properties[fieldName].files[0].external?.url;
+        if (fileUrl) {
+          imageUrl = fileUrl;
+          console.log(`Found image URL in field "${fieldName}" files array: ${imageUrl}`);
+          break;
         }
-      } catch (error) {
-        console.error(`Error downloading image for product ${productData.sku}:`, error);
       }
     }
     
-    // Check for existing product
-    const existingProduct = db.getProduct(productData.id);
+    // Debug output all properties to find image fields
+    console.log('All available properties:');
+    for (const [key, value] of Object.entries(properties)) {
+      console.log(`  Property: ${key}, Type: ${(value as any).type}`);
+    }
     
+    const productData = {
+      id: productPage.id,
+      name:
+        properties.Name?.title[0]?.plain_text || 'Unnamed product',
+      imageUrl: imageUrl, // Use our found image URL
+      partNumber: properties['Part Number']?.rich_text[0]?.plain_text || '',
+      sku: sku,
+      description:
+        properties.Description?.rich_text[0]?.plain_text || '',
+      etsyLink: properties['Etsy Link']?.url || '',
+      amazonLink: properties['Amazon Link']?.url || '',
+      category: properties.Category?.select?.name || '',
+      type: properties.Type?.select?.name || '',
+      version: 1,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+
+    // Set type to category if type is not defined, fallback to 'Unknown'
+    if (!productData.type) {
+      console.log(`Type not defined for ${productData.sku}, using category: ${productData.category || 'Unknown'}`);
+      productData.type = productData.category || 'Unknown';
+    }
+
+    // Get existing product or create new one
+    const existingProduct = db.getProduct(productData.id);
     let product;
-    let action: 'created' | 'updated';
     
     if (existingProduct) {
-      // Update existing product
-      console.log(`Updating existing product: ${productData.sku}`);
-      // Increment version
-      productData.version = (existingProduct.version || 0) + 1;
-      product = await db.updateProduct(existingProduct.id, productData);
-      action = 'updated';
+      product = await db.updateProduct(productData.id, {
+        ...productData,
+        version: existingProduct.version + 1,
+        // Keep existing localImagePath if it exists
+        localImagePath: existingProduct.localImagePath || null,
+      });
+      console.log(`Product updated: ${product.name} (${product.sku})`);
     } else {
-      // Create new product
-      console.log(`Creating new product: ${productData.sku}`);
-      productData.version = 1;
-      productData.createdAt = new Date().toISOString();
-      productData.updatedAt = new Date().toISOString();
       product = await db.createProduct(productData);
-      action = 'created';
+      console.log(`Product created: ${product.name} (${product.sku})`);
     }
     
-    if (product) {
-      // Process stickers from relations
-      await processStickers(product.id, productPage.stickerPages || [], db);
-      
-      // Process standalone stickers from product properties
-      const standaloneStickers = extractStandaloneStickers(productPage.properties);
-      if (standaloneStickers.length > 0) {
-        console.log(`Found ${standaloneStickers.length} standalone stickers for ${product.sku}`);
-        await processStandaloneStickers(product.id, standaloneStickers, db);
+    // Download image if URL is provided and not already downloaded
+    if (productData.imageUrl && (!product.localImagePath || !fs.existsSync(product.localImagePath))) {
+      console.log(`Downloading image for product ${product.sku} from ${productData.imageUrl}`);
+      try {
+        // Use the downloadAsset function which has better error handling
+        const downloadResult = await downloadAsset(productData.imageUrl, 'image', product.sku || product.id);
+        
+        if (downloadResult) {
+          // Update product with local image information
+          await db.updateProduct(product.id, {
+            localImagePath: downloadResult.localPath, 
+            imageUrl: downloadResult.appUrl
+          });
+          console.log(`Updated product with local image: ${downloadResult.localPath}`);
+          
+          // Update our local copy too
+          product.localImagePath = downloadResult.localPath;
+          product.imageUrl = downloadResult.appUrl;
+        } else {
+          console.error(`Failed to download image from ${productData.imageUrl}`);
+        }
+      } catch (error) {
+        console.error(`Error downloading image for product ${product.sku}:`, error);
+        console.error('Error details:', error.message);
+        
+        // Try to get the image from other fields if available
+        for (const fieldName of possibleImageFields) {
+          if (fieldName !== 'Image Link' && properties[fieldName]) {
+            console.log(`Trying alternative image from field "${fieldName}"`);
+            let altUrl = '';
+            
+            if (properties[fieldName]?.url) {
+              altUrl = properties[fieldName].url;
+            } else if (properties[fieldName]?.files && properties[fieldName].files.length > 0) {
+              altUrl = properties[fieldName].files[0].file?.url || properties[fieldName].files[0].external?.url || '';
+            }
+            
+            if (altUrl && altUrl !== productData.imageUrl) {
+              console.log(`Found alternative image URL: ${altUrl}`);
+              try {
+                const altResult = await downloadAsset(altUrl, 'image', product.sku || product.id);
+                if (altResult) {
+                  // Update product with local image information
+                  await db.updateProduct(product.id, {
+                    localImagePath: altResult.localPath, 
+                    imageUrl: altResult.appUrl
+                  });
+                  console.log(`Updated product with alternative image: ${altResult.localPath}`);
+                  
+                  // Update our local copy too
+                  product.localImagePath = altResult.localPath;
+                  product.imageUrl = altResult.appUrl;
+                  break; // Stop after first successful alternative
+                }
+              } catch (altError) {
+                console.error(`Error downloading alternative image:`, altError.message);
+              }
+            }
+          }
+        }
       }
     }
     
-    return { ...product, action };
+    // Process stickers (labels) for this product
+    await processStickersForProduct(product.id, productPage, db);
+    
+    return product;
   } catch (error) {
     console.error('Error processing product:', error);
     return null;
   }
 }
 
-// Function to extract product data from a Notion page
-function extractProductData(productPage: any) {
-  const properties = productPage.properties;
-  
-  return {
-    id: productPage.id,
-    notionId: productPage.id,
-    name: properties.Name?.title[0]?.plain_text || 'Unnamed Product',
-    sku: properties.SKU?.rich_text[0]?.plain_text || '',
-    barcode: properties.Barcode?.rich_text[0]?.plain_text || '',
-    price: properties.Price?.number || 0,
-    imageUrl: properties['Image Link']?.url || '',
-    partNumber: properties['Part Number']?.rich_text[0]?.plain_text || '',
-    description: properties.Description?.rich_text[0]?.plain_text || '',
-    etsyLink: properties['Etsy Link']?.url || '',
-    amazonLink: properties['Amazon Link']?.url || '',
-    category: properties.Category?.select?.name || '',
-    type: properties.Type?.select?.name || '',
-    tags: properties.Tags?.multi_select?.map(tag => tag.name) || []
-  };
+// Function to process all stickers for a product
+async function processStickersForProduct(productId: string, productPage: any, db: any): Promise<void> {
+  try {
+    // First process any stickers from relation fields
+    if (productPage.stickerPages && productPage.stickerPages.length > 0) {
+      await processStickers(productId, productPage.stickerPages, db);
+    }
+    
+    // Then process any standalone stickers from columns
+    const properties = productPage.properties;
+    const standaloneStickers: any[] = [];
+    
+    // Look for properties that match pattern "Sticker: {Label Name} (Label Size)"
+    for (const [key, value] of Object.entries(properties)) {
+      if (key.startsWith('Sticker:')) {
+        // Extract label name and size from property name
+        const match = key.match(/Sticker: (.*?) \((.*?)\)/);
+        if (match) {
+          const name = match[1];
+          const size = match[2];
+          
+          // Get the PDF URL from the property
+          let pdfUrl = '';
+          if ((value as any).url) {
+            pdfUrl = (value as any).url;
+          } else if ((value as any).files && (value as any).files.length > 0) {
+            pdfUrl = (value as any).files[0].file?.url || (value as any).files[0].external?.url || '';
+          }
+          
+          if (pdfUrl) {
+            console.log(`Found standalone sticker "${name}" (${size}) with PDF URL: ${pdfUrl}`);
+            standaloneStickers.push({ name, size, pdfUrl });
+          }
+        }
+      }
+    }
+    
+    if (standaloneStickers.length > 0) {
+      console.log(`Processing ${standaloneStickers.length} standalone stickers for product ${productId}`);
+      await processStandaloneStickers(productId, standaloneStickers, db);
+    } else if (!productPage.stickerPages || productPage.stickerPages.length === 0) {
+      // If no stickers at all, create a default one with the product name
+      const product = db.getProduct(productId);
+      if (product) {
+        const existingStickers = db.getStickers(productId);
+        if (existingStickers.length === 0) {
+          console.log(`Creating default sticker for product ${product.sku || productId}`);
+          await db.createSticker({
+            productId,
+            name: product.name,
+            size: '50x30mm',
+            pdfUrl: null,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString()
+          });
+        }
+      }
+    }
+  } catch (error) {
+    console.error(`Error processing stickers for product ${productId}:`, error);
+  }
 }
 
 // Function to process stickers from related pages
@@ -479,64 +613,82 @@ export async function processStandaloneStickers(productId: string, stickers: any
 
     const result: Sticker[] = [];
 
-    for (const stickerPage of stickers) {
-      const properties = stickerPage.properties;
-      
-      const name = properties.Name.title[0]?.plain_text || 'Unnamed sticker';
-      const size = properties.Size?.rich_text[0]?.plain_text || '';
-      const pdfUrl = properties['PDF Link']?.url || null;
+    for (const stickerData of stickers) {
+      try {
+        const name = stickerData.name;
+        const size = stickerData.size;
+        const pdfUrl = stickerData.pdfUrl;
+        
+        console.log(`Processing standalone sticker "${name}" (${size}) with PDF: ${pdfUrl}`);
+        
+        // Generate a unique identifier for the sticker
+        const stickerId = uuidv4();
+        let localPdfPath = null;
+        let previewUrl = null;
+        
+        // Download the PDF if URL is provided
+        if (pdfUrl) {
+          try {
+            console.log(`Downloading PDF from ${pdfUrl}`);
             
-      // Generate a unique identifier for the sticker
-      const stickerId = uuidv4();
-      let localPdfPath = null;
-      let previewUrl = null;
-      
-      // Download the PDF if URL is provided
-      if (pdfUrl) {
-        try {
-          const downloadResult = await downloadAsset(pdfUrl, 'pdf');
-          
-          if (downloadResult) {
-            localPdfPath = downloadResult.localPath;
+            // Generate a safe filename
+            const safeProductId = productId.replace(/[^a-zA-Z0-9-_]/g, '_');
+            const safeName = name.replace(/[^a-zA-Z0-9-_]/g, '_');
+            const basename = `${safeProductId}_${safeName}`;
             
-            // Generate preview
-            const result = await preparePdfWithPreview(localPdfPath);
-            if (result) {
-              previewUrl = result.previewUrl;
+            // Use downloadAsset which now properly handles Google Drive files
+            const downloadResult = await downloadAsset(pdfUrl, 'pdf', basename);
+            
+            if (downloadResult) {
+              localPdfPath = downloadResult.localPath;
+              
+              // Generate preview from PDF
+              console.log(`Generating preview for PDF: ${localPdfPath}`);
+              const previewResult = await preparePdfWithPreview(localPdfPath);
+              if (previewResult) {
+                previewUrl = previewResult.previewUrl;
+                console.log(`Created preview at ${previewUrl}`);
+              } else {
+                console.error(`Failed to create preview for ${localPdfPath}`);
+              }
             }
+          } catch (error) {
+            console.error(`Error downloading PDF for sticker ${name}:`, error);
           }
-        } catch (error) {
-          console.error(`Error downloading PDF for sticker ${name}:`, error);
         }
-      }
 
-      // Check if sticker already exists
-      const existingSticker = db.getStickers(productId).find(s => s.name === name && s.size === size);
-      
-      if (existingSticker) {
-        // Update existing sticker
-        const updatedSticker = db.updateSticker(existingSticker.id, {
-          name,
-          size,
-          pdfUrl,
-          localPdfPath,
-          previewUrl,
-          updatedAt: new Date().toISOString(),
-        });
-        result.push(updatedSticker);
-      } else {
-        // Create new sticker
-        const newSticker = db.createSticker({
-          productId,
-          name,
-          size,
-          pdfUrl,
-          localPdfPath,
-          previewUrl,
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-        });
-        result.push(newSticker);
+        // Get existing sticker or create new one
+        const existingSticker = db.getStickers(productId).find(s => s.name === name && s.size === size);
+        
+        if (existingSticker) {
+          // Update existing sticker
+          const updatedSticker = await db.updateSticker(existingSticker.id, {
+            name,
+            size,
+            pdfUrl: localPdfPath ? `app://pdfs/${path.basename(localPdfPath)}` : null,
+            localPdfPath,
+            previewUrl,
+            updatedAt: new Date().toISOString(),
+          });
+          console.log(`Updated sticker: ${name}`);
+          result.push(updatedSticker);
+        } else {
+          // Create new sticker
+          const newSticker = await db.createSticker({
+            productId,
+            name,
+            size,
+            pdfUrl: localPdfPath ? `app://pdfs/${path.basename(localPdfPath)}` : null,
+            localPdfPath,
+            previewUrl,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          });
+          console.log(`Created new sticker: ${name}`);
+          result.push(newSticker);
+        }
+      } catch (error) {
+        console.error(`Error processing sticker:`, error);
       }
     }
 
@@ -559,17 +711,49 @@ function getDownloadDir(type: 'images' | 'pdfs'): string {
   return typePath;
 }
 
+// Function to retrieve a file directly from Notion
+async function retrieveNotionFile(fileUrl: string, apiKey: string): Promise<Buffer | null> {
+  if (!fileUrl || !fileUrl.includes('secure.notion-static.com')) {
+    return null;
+  }
+  
+  console.log(`Retrieving file directly from Notion: ${fileUrl}`);
+  
+  try {
+    // Use axios to fetch with proper headers
+    const response = await axios({
+      method: 'GET',
+      url: fileUrl,
+      responseType: 'arraybuffer',
+      timeout: 30000,
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36',
+        'Accept': '*/*'
+      }
+    });
+    
+    return Buffer.from(response.data);
+  } catch (error) {
+    console.error(`Error retrieving file from Notion:`, error.message);
+    return null;
+  }
+}
+
 // Download a file based on type
 async function downloadAsset(url: string, type: 'image' | 'pdf', customName?: string): Promise<{ appUrl: string, localPath: string } | null> {
   try {
-    if (!url) return null;
+    if (!url) {
+      console.log('No URL provided, skipping download');
+      return null;
+    }
     
     console.log(`Downloading ${type} from ${url}`);
     
     // Determine file extension
     let ext = path.extname(url);
-    if (!ext) {
-      ext = type === 'image' ? '.jpg' : '.pdf';
+    if (!ext || ext === '.com' || ext.length > 5) {
+      ext = type === 'image' ? '.png' : '.pdf';
     }
     
     // Generate filename
@@ -582,8 +766,114 @@ async function downloadAsset(url: string, type: 'image' | 'pdf', customName?: st
     const downloadDir = getDownloadDir(type === 'image' ? 'images' : 'pdfs');
     const localPath = path.join(downloadDir, filename);
     
-    // Download the file
-    await downloadFile(url, localPath);
+    // Create directory if it doesn't exist
+    if (!fs.existsSync(downloadDir)) {
+      fs.mkdirSync(downloadDir, { recursive: true });
+    }
+    
+    // Use different methods based on file type
+    console.log(`Downloading ${type} to ${localPath}`);
+    let success = false;
+    
+    try {
+      if (type === 'image') {
+        // Use ultra-direct method for images
+        await directDownload(url, localPath);
+        
+        // Verify file is valid
+        if (fs.existsSync(localPath)) {
+          const stats = fs.statSync(localPath);
+          if (stats.size > 0) {
+            console.log(`Successfully downloaded image (${stats.size} bytes) to ${localPath}`);
+            success = true;
+          } else {
+            console.log(`Downloaded image file is empty, will try alternative methods`);
+          }
+        }
+        
+        // If direct download failed for images, try alternative methods
+        if (!success) {
+          console.log(`Trying alternative image download methods for ${url}`);
+          
+          // Try Notion direct retrieval if it's a Notion URL
+          if (url.includes('notion-static.com')) {
+            try {
+              console.log(`URL appears to be from Notion, trying direct retrieval`);
+              const notionSettings = db.getNotionSetting();
+              if (notionSettings && notionSettings.apiKey) {
+                const fileData = await retrieveNotionFile(url, notionSettings.apiKey);
+                if (fileData && fileData.length > 0) {
+                  fs.writeFileSync(localPath, fileData);
+                  console.log(`Successfully retrieved file from Notion (${fileData.length} bytes)`);
+                  success = true;
+                }
+              }
+            } catch (notionError) {
+              console.error(`Notion direct retrieval failed: ${notionError.message}`);
+            }
+          }
+          
+          // Is this a Google Drive URL?
+          if (!success) {
+            const fileId = extractFileId(url);
+            if (fileId) {
+              try {
+                console.log(`Detected Google Drive URL, using Drive-specific image download for ID: ${fileId}`);
+                await downloadDriveImage(fileId, localPath);
+                success = true;
+              } catch (driveError) {
+                console.error(`Google Drive image download failed: ${driveError.message}`);
+              }
+            }
+          }
+          
+          // Try direct axios download as last resort
+          if (!success) {
+            try {
+              console.log(`Trying direct axios download as last resort`);
+              const response = await axios({
+                method: 'GET',
+                url,
+                responseType: 'arraybuffer',
+                timeout: 30000,
+                maxRedirects: 5,
+                headers: {
+                  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+                  'Accept': 'image/*,*/*;q=0.8'
+                }
+              });
+              
+              // Check for HTML response
+              const firstBytes = Buffer.from(response.data).slice(0, 100).toString().toLowerCase();
+              if (!firstBytes.includes('<!doctype html>') && !firstBytes.includes('<html')) {
+                fs.writeFileSync(localPath, Buffer.from(response.data));
+                const stats = fs.statSync(localPath);
+                if (stats.size > 0) {
+                  console.log(`Successfully downloaded image with direct axios (${stats.size} bytes)`);
+                  success = true;
+                }
+              } else {
+                console.log(`Received HTML instead of image data`);
+              }
+            } catch (axiosError) {
+              console.error(`Direct axios download failed: ${axiosError.message}`);
+            }
+          }
+        }
+      } else {
+        // Use standard method for PDFs
+        await downloadFile(url, localPath);
+        success = true;
+      }
+    } catch (downloadError) {
+      console.error(`Error during download: ${downloadError.message}`);
+    }
+    
+    // Check if download was successful
+    if (!success) {
+      console.error(`All download methods failed for ${url}`);
+      return null;
+    }
     
     // Generate app URL
     const appUrl = `app://${type === 'image' ? 'images' : 'pdfs'}/${filename}`;
@@ -609,8 +899,16 @@ export async function downloadFileFromUrl(url: string, localPath: string): Promi
     const fileId = extractFileId(url);
     if (fileId) {
       console.log(`Detected Google Drive URL, extracted file ID: ${fileId}`);
-      // Use Drive API to download
-      return await downloadDriveFile(fileId, localPath);
+      
+      // Check if this is an image file
+      const isImage = localPath.match(/\.(jpe?g|png|gif|webp|bmp|svg)$/i) !== null;
+      if (isImage) {
+        console.log(`Detected image file, using image-specific download method`);
+        return await downloadDriveImage(fileId, localPath);
+      } else {
+        // Use Drive API to download
+        return await downloadDriveFile(fileId, localPath);
+      }
     } else {
       // Regular download for non-Drive URLs
       return await downloadFile(url, localPath);
@@ -661,69 +959,5 @@ export async function processProducts(page: any[], db: any): Promise<void> {
     }
   } catch (error) {
     console.error('Error processing products:', error);
-  }
-}
-
-export async function processProduct(
-  productPage: any,
-  db: any
-): Promise<Product | null> {
-  try {
-    const properties = productPage.properties;
-
-    const sku = properties.SKU?.rich_text[0]?.plain_text || '';
-    
-    // Debugging for category property
-    console.log(`Processing product: SKU ${sku}`);
-    console.log(`Category property:`, properties.Category);
-    
-    const productData = {
-      id: productPage.id,
-      name:
-        properties.Name?.title[0]?.plain_text || 'Unnamed product',
-      imageUrl: properties['Image Link']?.url || '',
-      partNumber: properties['Part Number']?.rich_text[0]?.plain_text || '',
-      sku: sku,
-      description:
-        properties.Description?.rich_text[0]?.plain_text || '',
-      etsyLink: properties['Etsy Link']?.url || '',
-      amazonLink: properties['Amazon Link']?.url || '',
-      category: properties.Category?.select?.name || '',
-      type: properties.Type?.select?.name || '',
-      version: 1,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
-
-    // Set type to category if type is not defined, fallback to 'Unknown'
-    if (!productData.type) {
-      console.log(`Type not defined for ${productData.sku}, using category: ${productData.category || 'Unknown'}`);
-      productData.type = productData.category || 'Unknown';
-    }
-
-    // Create product in database
-    const product = db.getProduct(productData.id);
-    
-    if (product) {
-      const updatedProduct = db.updateProduct(productData.id, {
-        ...productData,
-        version: product.version + 1,
-      });
-      console.log(
-        `Product updated: ${updatedProduct.name} (${updatedProduct.sku})`
-      );
-      return updatedProduct;
-    } else {
-      const newProduct = db.createProduct(productData);
-      // Download the image if URL is provided
-      if (productData.imageUrl) {
-        await downloadAsset(productData.imageUrl, 'image', productData.sku);
-      }
-      console.log(`Product created: ${newProduct.name} (${newProduct.sku})`);
-      return newProduct;
-    }
-  } catch (error) {
-    console.error('Error processing product:', error);
-    return null;
   }
 } 

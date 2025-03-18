@@ -1,0 +1,35 @@
+{
+    "editor.formatOnSave": true,
+    "editor.codeActionsOnSave": {
+      "source.fixAll.eslint": true
+    },
+    "window.experimental.usageOptimizations": true,
+    "files.restoreUndoStack": false,
+    "workbench.enableExperiments": false,
+    "telemetry.enableTelemetry": false,
+    "editor.tabSize": 2,
+    "editor.wordWrap": "on",
+    "explorer.compactFolders": false,
+    "terminal.integrated.defaultProfile.osx": "zsh",
+    "terminal.integrated.fontFamily": "MesloLGS NF",
+    "cursor.ai.assistPanel.enabled": true,
+    "cursor.ai.keyboard.complete": "tab",
+    "cursor.ai.keyboard.generate": "option+]",
+    "cursor.ai.keyboard.explainCode": "option+;",
+    "window.nativeTabs": true,
+    "window.titleBarStyle": "native",
+    "files.watcherExclude": {
+      "**/.git/objects/**": true,
+      "**/.git/subtree-cache/**": true,
+      "**/node_modules/**": true,
+      "**/dist/**": true,
+      "**/build/**": true
+    },
+    "search.exclude": {
+      "**/node_modules": true,
+      "**/bower_components": true,
+      "**/dist": true,
+      "**/build": true,
+      "**/.git": true
+    }
+  }

@@ -1,0 +1,53 @@
+# Системні файли
+.DS_Store
+Thumbs.db
+
+# Залежності
+node_modules/
+bower_components/
+jspm_packages/
+.pnp/
+.pnp.js
+
+# Збірки та дистрибутиви
+dist/
+build/
+out/
+release/
+*.bundle.js
+
+# Кеш
+.cache/
+.parcel-cache/
+.npm/
+.eslintcache
+.stylelintcache
+
+# Логи
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Змінні середовища
+.env
+.env.*
+.env-*
+
+# Файли IDE/редакторів (крім конфігурації Cursor)
+.idea/
+.vscode/*
+!.vscode/cursor-settings.json
+*.swp
+*.swo
+*~
+.history/
+
+# Тимчасові та згенеровані файли
+tmp/
+temp/
+*.tsbuildinfo
+.vercel
+.next/
+c

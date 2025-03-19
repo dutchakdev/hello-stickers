@@ -1,0 +1,6 @@
+/* Basic styling for app */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Custom CSS can be added below */ 

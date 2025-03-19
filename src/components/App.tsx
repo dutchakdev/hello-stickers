@@ -99,8 +99,8 @@ const App: React.FC = () => {
     // Load products immediately
     loadProducts();
     
-    // Load settings after a small delay to prioritize product display
-    setTimeout(loadGeneralSettings, 300);
+    // Load settings immediately
+    loadGeneralSettings();
   }, []);
 
   // Load stickers when a product is selected
@@ -150,8 +150,8 @@ const App: React.FC = () => {
       }
     };
     
-    // Defer loading settings to improve initial render time
-    setTimeout(loadSettings, 1000);
+    // Load settings immediately
+    loadSettings();
   }, []);
 
   // Filter products by type

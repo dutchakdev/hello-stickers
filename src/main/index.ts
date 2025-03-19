@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, dialog, protocol, Menu } from 'electron';
+import { app, BrowserWindow, ipcMain, dialog, protocol, Menu, WebContents } from 'electron';
 import * as path from 'path';
 import * as fs from 'fs';
 import { exec, execFile } from 'child_process';
@@ -297,6 +297,16 @@ function setupDatabaseIpcHandlers() {
     }
   });
 
+  ipcMain.handle('db-update-printer-settings', async (event, settings) => {
+    try {
+      console.log('Updating printer settings:', settings);
+      return await db.updatePrinterSettings(settings);
+    } catch (error) {
+      console.error('Error updating printer settings:', error);
+      throw error;
+    }
+  });
+
   ipcMain.handle('db-get-printer-setting', async (event, size) => {
     try {
       const settings = db.getPrinterSettings();
@@ -384,8 +394,13 @@ ipcMain.handle('sync-notion', async (event) => {
 // Get available printers
 ipcMain.handle('get-available-printers', async () => {
   if (mainWindow) {
-    // Use a simpler approach that doesn't rely on getPrinters
-    return ['Default Printer']; // Mock printer for now
+    try {
+      const printers = await mainWindow.webContents.getPrintersAsync();
+      return printers.map(printer => printer.name);
+    } catch (error) {
+      console.error('Error getting printers:', error);
+      return [];
+    }
   }
   return [];
 });

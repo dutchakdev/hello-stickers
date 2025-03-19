@@ -45,6 +45,8 @@ export interface PrinterSetting {
     fitToPage?: boolean;
     printScaling?: string;
   };
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface NotionSetting {
@@ -83,7 +85,9 @@ const defaultData: DatabaseSchema = {
         orientation: 3,
         fitToPage: true,
         printScaling: 'auto'
-      }
+      },
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
     }
   ],
   notionSetting: {
@@ -160,10 +164,19 @@ const dbMethods = {
         db.data.googleDriveSetting = defaultData.googleDriveSetting;
       }
       
-      // Ensure printerSettings is initialized
-      if (!Array.isArray(db.data.printerSettings) || db.data.printerSettings.length === 0) {
-        db.data.printerSettings = defaultData.printerSettings;
+      // Ensure printerSettings is initialized with proper structure
+      if (!Array.isArray(db.data.printerSettings)) {
+        db.data.printerSettings = [];
       }
+      
+      // Validate and fix printer settings structure
+      db.data.printerSettings = db.data.printerSettings.map(setting => {
+        if (!setting.id) setting.id = Date.now().toString();
+        if (!setting.options) setting.options = {};
+        if (!setting.createdAt) setting.createdAt = new Date().toISOString();
+        if (!setting.updatedAt) setting.updatedAt = new Date().toISOString();
+        return setting;
+      });
       
       // Ensure appSettings is initialized
       if (!Array.isArray(db.data.appSettings)) {
@@ -335,6 +348,38 @@ const dbMethods = {
     return newSetting;
   },
 
+  async updatePrinterSettings(settings: { printerName: string }) {
+    if (!isInitialized) this.initDatabase();
+    const existingSettings = this.getPrinterSettings();
+    const existingSetting = existingSettings[0]; // We're using the first setting as default
+    
+    if (existingSetting) {
+      // Update existing setting
+      const updatedSetting = {
+        ...existingSetting,
+        printerName: settings.printerName,
+        updatedAt: new Date().toISOString()
+      };
+      db.data.printerSettings[0] = updatedSetting;
+      await saveDatabase();
+      return updatedSetting;
+    } else {
+      // Create new setting
+      return await this.createPrinterSetting({
+        size: '50x30mm', // Default size
+        printerName: settings.printerName,
+        options: {
+          media: 'Custom.50x30mm',
+          orientation: 3,
+          fitToPage: true,
+          printScaling: 'auto'
+        },
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      });
+    }
+  },
+
   async deletePrinterSetting(size: string) {
     if (!isInitialized) this.initDatabase();
     const index = db.data.printerSettings.findIndex(p => p.size === size);
@@ -487,6 +532,7 @@ export default {
   createOrUpdateGoogleDriveSetting: dbMethods.createOrUpdateGoogleDriveSetting,
   getPrinterSettings: dbMethods.getPrinterSettings,
   createPrinterSetting: dbMethods.createPrinterSetting,
+  updatePrinterSettings: dbMethods.updatePrinterSettings,
   clearProducts: dbMethods.clearProducts,
   saveDatabase,
   getAppSettings: dbMethods.getAppSettings,

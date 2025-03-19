@@ -27,23 +27,7 @@ const ProductDetailsDrawer: React.FC<ProductDetailsDrawerProps> = ({
       try {
         const fetchedStickers = await window.electron.ipcRenderer.invoke('db-get-stickers', product.id);
         console.log(`Found ${fetchedStickers.length} stickers for product ${product.sku}`);
-        
-        if (fetchedStickers.length === 0) {
-          console.log(`No stickers found for product ${product.sku}, creating default sticker`);
-          const defaultSticker = {
-            productId: product.id,
-            name: `Price Tag for ${product.name}`,
-            size: 'Default',
-            pdfUrl: null,
-            previewUrl: null
-          };
-          
-          const createdSticker = await window.electron.ipcRenderer.invoke('create-sticker', defaultSticker);
-          console.log('Created default sticker:', createdSticker);
-          setStickers([createdSticker]);
-        } else {
-          setStickers(fetchedStickers);
-        }
+        setStickers(fetchedStickers);
       } catch (error) {
         console.error('Error fetching stickers:', error);
       } finally {
@@ -115,7 +99,7 @@ const ProductDetailsDrawer: React.FC<ProductDetailsDrawerProps> = ({
             </div>
           ) : stickers.length === 0 ? (
             <div className="text-center p-8 text-gray-500 dark:text-gray-400">
-              No stickers available for this product
+              Stickers not found
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -126,7 +110,7 @@ const ProductDetailsDrawer: React.FC<ProductDetailsDrawerProps> = ({
                     <p className="text-sm text-gray-500">Size: {sticker.size}</p>
                   </div>
                   
-                  <div className="sticker-preview bg-gray-50 dark:bg-[#1f2128] p-6 flex justify-center items-center border-t border-gray-200 dark:border-gray-700">
+                  <div className="sticker-preview bg-gray-50 bg-white p-6 flex justify-center items-center border-t border-gray-200 dark:border-gray-700">
                     {sticker.previewUrl ? (
                       <img 
                         src={sticker.previewUrl} 
@@ -140,7 +124,7 @@ const ProductDetailsDrawer: React.FC<ProductDetailsDrawerProps> = ({
                           <div>{product.sku}</div>
                         </div>
                         {product.barcode && (
-                          <div className="barcode-img bg-white p-4 inline-block">
+                          <div className="barcode-img p-4 inline-block">
                             <img 
                               src={`https://bwipjs-api.metafloor.com/?bcid=ean13&text=${product.barcode}&scale=3&includetext&textxalign=center`} 
                               alt="Barcode" 
@@ -152,7 +136,7 @@ const ProductDetailsDrawer: React.FC<ProductDetailsDrawerProps> = ({
                     )}
                   </div>
                   
-                  <div className="p-4 border-t bg-gray-50">
+                  <div className="p-4 border-t">
                     <Button 
                       className="w-full bg-blue-500 hover:bg-blue-600 text-white"
                       onClick={() => handlePrint(sticker)}

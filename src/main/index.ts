@@ -430,9 +430,50 @@ ipcMain.handle('print-sticker', async (event, stickerId) => {
       return { success: false, message: `No printer setting for size ${sticker.size}` };
     }
     
-    // Return success for now - we'll implement actual printing in a follow-up
-    console.log(`Would print ${fullPdfPath} to printer ${printerSetting.size}`);
-    return { success: true, message: 'Sticker sent to printer' };
+    // Actually print the file using the print-pdf handler
+    try {
+      const printResult = await new Promise((resolve, reject) => {
+        const command = `lp -d "${printerSetting.printerName}" -n 1`;
+        let options = '';
+        
+        if (printerSetting.options.media) {
+          options += ` -o media=${printerSetting.options.media}`;
+        }
+        
+        if (printerSetting.options.orientation) {
+          options += ` -o orientation-requested=${printerSetting.options.orientation}`;
+        }
+        
+        if (printerSetting.options.fitToPage) {
+          options += ` -o fit-to-page`;
+        }
+        
+        if (printerSetting.options.printScaling) {
+          options += ` -o print-scaling=${printerSetting.options.printScaling}`;
+        }
+        
+        const fullCommand = `${command}${options} "${fullPdfPath}"`;
+        console.log(`Executing print command: ${fullCommand}`);
+        
+        exec(fullCommand, (error, stdout, stderr) => {
+          if (error) {
+            console.error(`Print error: ${error.message}`);
+            reject(error);
+            return;
+          }
+          if (stderr) {
+            console.error(`Print stderr: ${stderr}`);
+          }
+          resolve({ success: true, stdout });
+        });
+      });
+      
+      console.log(`Print result: ${JSON.stringify(printResult)}`);
+      return { success: true, message: 'Sticker sent to printer' };
+    } catch (printError) {
+      console.error('Error during printing:', printError);
+      return { success: false, message: `Printing failed: ${printError.message}` };
+    }
   } catch (error) {
     console.error('Error printing sticker:', error);
     return { success: false, message: error.message };

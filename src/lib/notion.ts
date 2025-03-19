@@ -346,8 +346,10 @@ export async function processProduct(
       product = await db.updateProduct(productData.id, {
         ...productData,
         version: existingProduct.version + 1,
-        // Keep existing localImagePath if it exists
-        localImagePath: existingProduct.localImagePath || null,
+        // Keep existing localImagePath if it exists and file exists
+        localImagePath: existingProduct.localImagePath && fs.existsSync(existingProduct.localImagePath) 
+          ? existingProduct.localImagePath 
+          : null,
       });
       console.log(`Product updated: ${product.name} (${product.sku})`);
     } else {
@@ -355,7 +357,9 @@ export async function processProduct(
       console.log(`Product created: ${product.name} (${product.sku})`);
     }
     
-    // Download image if URL is provided and not already downloaded
+    // Download image if URL is provided and either:
+    // 1. We don't have a local path, or
+    // 2. The local file doesn't exist
     if (productData.imageUrl && (!product.localImagePath || !fs.existsSync(product.localImagePath))) {
       console.log(`Downloading image for product ${product.sku} from ${productData.imageUrl}`);
       try {
@@ -368,54 +372,13 @@ export async function processProduct(
             localImagePath: downloadResult.localPath, 
             imageUrl: downloadResult.appUrl
           });
-          console.log(`Updated product with local image: ${downloadResult.localPath}`);
-          
-          // Update our local copy too
-          product.localImagePath = downloadResult.localPath;
-          product.imageUrl = downloadResult.appUrl;
-        } else {
-          console.error(`Failed to download image from ${productData.imageUrl}`);
+          console.log(`Updated product ${product.sku} with local image path: ${downloadResult.localPath}`);
         }
       } catch (error) {
         console.error(`Error downloading image for product ${product.sku}:`, error);
-        console.error('Error details:', error.message);
-        
-        // Try to get the image from other fields if available
-        for (const fieldName of possibleImageFields) {
-          if (fieldName !== 'Image Link' && properties[fieldName]) {
-            console.log(`Trying alternative image from field "${fieldName}"`);
-            let altUrl = '';
-            
-            if (properties[fieldName]?.url) {
-              altUrl = properties[fieldName].url;
-            } else if (properties[fieldName]?.files && properties[fieldName].files.length > 0) {
-              altUrl = properties[fieldName].files[0].file?.url || properties[fieldName].files[0].external?.url || '';
-            }
-            
-            if (altUrl && altUrl !== productData.imageUrl) {
-              console.log(`Found alternative image URL: ${altUrl}`);
-              try {
-                const altResult = await downloadAsset(altUrl, 'image', product.sku || product.id);
-                if (altResult) {
-                  // Update product with local image information
-                  await db.updateProduct(product.id, {
-                    localImagePath: altResult.localPath, 
-                    imageUrl: altResult.appUrl
-                  });
-                  console.log(`Updated product with alternative image: ${altResult.localPath}`);
-                  
-                  // Update our local copy too
-                  product.localImagePath = altResult.localPath;
-                  product.imageUrl = altResult.appUrl;
-                  break; // Stop after first successful alternative
-                }
-              } catch (altError) {
-                console.error(`Error downloading alternative image:`, altError.message);
-              }
-            }
-          }
-        }
       }
+    } else if (product.localImagePath && fs.existsSync(product.localImagePath)) {
+      console.log(`Using existing image for product ${product.sku} at ${product.localImagePath}`);
     }
     
     // Process stickers (labels) for this product
@@ -543,7 +506,7 @@ async function processStickers(productId: string, stickerPages: any[], db: any):
         
         if (pdfUrl) {
           try {
-            console.log(`Downloading PDF from ${pdfUrl}`);
+            console.log(`Processing PDF from ${pdfUrl}`);
             const pdfDir = path.join(app.getPath('userData'), 'downloads', 'pdfs');
             
             if (!fs.existsSync(pdfDir)) {
@@ -553,16 +516,49 @@ async function processStickers(productId: string, stickerPages: any[], db: any):
             const fileName = `${productId}_${stickerName.replace(/\s+/g, '_')}.pdf`;
             const pdfPath = path.join(pdfDir, fileName);
             
-            // Download and save the PDF file
-            await downloadFile(pdfUrl, pdfPath);
-            console.log(`PDF downloaded to: ${pdfPath}`);
+            // Check if PDF already exists and is valid
+            let pdfExists = false;
+            if (fs.existsSync(pdfPath)) {
+              const stats = fs.statSync(pdfPath);
+              if (stats.size > 0) {
+                console.log(`PDF already exists at ${pdfPath} with size ${stats.size} bytes, reusing it`);
+                pdfExists = true;
+              } else {
+                console.log(`Existing PDF is empty, will re-download`);
+                fs.unlinkSync(pdfPath);
+              }
+            }
+            
+            if (!pdfExists) {
+              // Download and save the PDF file
+              await downloadFile(pdfUrl, pdfPath);
+              console.log(`PDF downloaded to: ${pdfPath}`);
+            }
             
             // Generate app:// URLs for PDF and its preview
             appPdfUrl = `app://pdfs/${fileName}`;
             
-            // Create preview image from PDF
-            appPreviewUrl = await createPdfPreview(pdfPath);
-            console.log(`PDF preview URL: ${appPreviewUrl}`);
+            // Check if preview already exists
+            const previewsDir = path.join(app.getPath('userData'), 'downloads', 'previews');
+            const previewName = `${path.basename(fileName, '.pdf')}_preview.png`;
+            const previewPath = path.join(previewsDir, previewName);
+            
+            if (fs.existsSync(previewPath)) {
+              const stats = fs.statSync(previewPath);
+              if (stats.size > 0) {
+                console.log(`Preview already exists at ${previewPath}, reusing it`);
+                appPreviewUrl = `app://previews/${previewName}`;
+              } else {
+                console.log(`Existing preview is empty, will regenerate`);
+                fs.unlinkSync(previewPath);
+              }
+            }
+            
+            // Create preview image from PDF if it doesn't exist
+            if (!appPreviewUrl) {
+              appPreviewUrl = await createPdfPreview(pdfPath);
+              console.log(`Generated new PDF preview: ${appPreviewUrl}`);
+            }
           } catch (error) {
             console.error(`Error processing PDF for sticker "${stickerName}":`, error);
           }
@@ -629,12 +625,36 @@ export async function processStandaloneStickers(productId: string, stickers: any
         // Download the PDF if URL is provided
         if (pdfUrl) {
           try {
-            console.log(`Downloading PDF from ${pdfUrl}`);
+            console.log(`Processing PDF from ${pdfUrl}`);
             
             // Generate a safe filename
             const safeProductId = productId.replace(/[^a-zA-Z0-9-_]/g, '_');
             const safeName = name.replace(/[^a-zA-Z0-9-_]/g, '_');
             const basename = `${safeProductId}_${safeName}`;
+            
+            // Check if we have an existing sticker with this PDF
+            const existingSticker = db.getStickers(productId).find(s => s.name === name && s.size === size);
+            if (existingSticker && existingSticker.localPdfPath && fs.existsSync(existingSticker.localPdfPath)) {
+              const stats = fs.statSync(existingSticker.localPdfPath);
+              if (stats.size > 0) {
+                console.log(`Using existing PDF at ${existingSticker.localPdfPath}`);
+                localPdfPath = existingSticker.localPdfPath;
+                previewUrl = existingSticker.previewUrl;
+                
+                // If we have the PDF but no preview, regenerate the preview
+                if (!previewUrl || !previewUrl.startsWith('app://previews/')) {
+                  console.log(`Regenerating preview for existing PDF: ${localPdfPath}`);
+                  const previewResult = await preparePdfWithPreview(localPdfPath);
+                  if (previewResult) {
+                    previewUrl = previewResult.previewUrl;
+                    console.log(`Created preview at ${previewUrl}`);
+                  }
+                }
+                
+                // Skip the rest of PDF processing
+                continue;
+              }
+            }
             
             // Use downloadAsset which now properly handles Google Drive files
             const downloadResult = await downloadAsset(pdfUrl, 'pdf', basename);
@@ -642,18 +662,20 @@ export async function processStandaloneStickers(productId: string, stickers: any
             if (downloadResult) {
               localPdfPath = downloadResult.localPath;
               
-              // Generate preview from PDF
-              console.log(`Generating preview for PDF: ${localPdfPath}`);
-              const previewResult = await preparePdfWithPreview(localPdfPath);
-              if (previewResult) {
-                previewUrl = previewResult.previewUrl;
-                console.log(`Created preview at ${previewUrl}`);
-              } else {
-                console.error(`Failed to create preview for ${localPdfPath}`);
+              // Generate preview from PDF if needed
+              if (!previewUrl) {
+                console.log(`Generating preview for PDF: ${localPdfPath}`);
+                const previewResult = await preparePdfWithPreview(localPdfPath);
+                if (previewResult) {
+                  previewUrl = previewResult.previewUrl;
+                  console.log(`Created preview at ${previewUrl}`);
+                } else {
+                  console.error(`Failed to create preview for ${localPdfPath}`);
+                }
               }
             }
           } catch (error) {
-            console.error(`Error downloading PDF for sticker ${name}:`, error);
+            console.error(`Error processing PDF for sticker ${name}:`, error);
           }
         }
 
@@ -748,7 +770,7 @@ async function downloadAsset(url: string, type: 'image' | 'pdf', customName?: st
       return null;
     }
     
-    console.log(`Downloading ${type} from ${url}`);
+    console.log(`Processing ${type} from ${url}`);
     
     // Determine file extension
     let ext = path.extname(url);
@@ -765,6 +787,21 @@ async function downloadAsset(url: string, type: 'image' | 'pdf', customName?: st
     // Get download directory
     const downloadDir = getDownloadDir(type === 'image' ? 'images' : 'pdfs');
     const localPath = path.join(downloadDir, filename);
+    
+    // Check if file already exists with this name
+    if (fs.existsSync(localPath)) {
+      const stats = fs.statSync(localPath);
+      if (stats.size > 0) {
+        console.log(`File already exists at ${localPath} with size ${stats.size} bytes, reusing it`);
+        return {
+          appUrl: `app://${type === 'image' ? 'images' : 'pdfs'}/${filename}`,
+          localPath
+        };
+      } else {
+        console.log(`Existing file is empty, will re-download`);
+        fs.unlinkSync(localPath); // Remove empty file
+      }
+    }
     
     // Create directory if it doesn't exist
     if (!fs.existsSync(downloadDir)) {

@@ -178,6 +178,7 @@ const App: React.FC = () => {
       const matchesType = selectedType === 'all' || product.type === selectedType;
       const matchesSearch = 
         product.name.toLowerCase().includes(lowerQuery) || 
+        product.type.toLowerCase().includes(lowerQuery) || 
         product.sku.toLowerCase().includes(lowerQuery) || 
         (product.barcode && product.barcode.toLowerCase().includes(lowerQuery));
       
@@ -363,7 +364,7 @@ const App: React.FC = () => {
         onFilterByType={handleFilterByType}
       />
       
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-4 gap-4">
         {isLoading ? (
           // Loading skeleton cards
           Array(8).fill(0).map((_, index) => (

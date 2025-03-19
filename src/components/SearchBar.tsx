@@ -32,7 +32,7 @@ const SearchBar: React.FC<SearchBarProps> = ({
         <input
           type="search"
           className="block w-full p-4 pl-10 text-sm text-gray-900 border border-gray-300 rounded-l-lg bg-white focus:ring-blue-500 focus:border-blue-500"
-          placeholder="Search products by name, SKU, or barcode..."
+          placeholder="Search products by name, type, SKU, or barcode..."
           value={query}
           onChange={handleChange}
         />

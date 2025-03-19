@@ -327,6 +327,7 @@ export async function processProduct(
       amazonLink: properties['Amazon Link']?.url || '',
       category: properties.Category?.select?.name || '',
       type: properties.Type?.select?.name || '',
+      barcode: properties.Barcode?.rich_text[0]?.plain_text || undefined,
       version: 1,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),

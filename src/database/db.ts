@@ -262,6 +262,7 @@ const dbMethods = {
     const lowerQuery = query.toLowerCase();
     const results = db.data.products.filter(p => 
       p.name.toLowerCase().includes(lowerQuery) || 
+      p.type.toLowerCase().includes(lowerQuery) || 
       p.sku.toLowerCase().includes(lowerQuery) || 
       (p.barcode && p.barcode.toLowerCase().includes(lowerQuery))
     );

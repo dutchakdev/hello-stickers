@@ -1,9 +1,15 @@
 import React, { useEffect, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { Moon, Sun, Settings as SettingsIcon, RefreshCw } from 'lucide-react';
+import { Moon, Sun, Settings as SettingsIcon, RefreshCw, Maximize, Minimize } from 'lucide-react';
 import { Button } from './ui/button';
 import { SettingsModal } from './SettingsModal';
 import { Toaster } from './ui/toaster';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from './ui/tooltip';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -15,6 +21,7 @@ const Layout: React.FC<LayoutProps> = ({ children, onSyncFromNotion, isSyncing =
   const location = useLocation();
   const [theme, setTheme] = useState<'light' | 'dark'>('dark');
   const [appName, setAppName] = useState('HEY ❤️');
+  const [isFullscreen, setIsFullscreen] = useState(false);
   
   // Apply dark theme immediately for consistent UX
   useEffect(() => {
@@ -22,6 +29,18 @@ const Layout: React.FC<LayoutProps> = ({ children, onSyncFromNotion, isSyncing =
     document.documentElement.classList.add('dark');
     document.documentElement.classList.add('theme-zinc');
     setTheme('dark');
+    
+    // Check initial fullscreen state
+    const checkFullscreenState = async () => {
+      try {
+        const fullscreenState = await window.electron.ipcRenderer.invoke('is-fullscreen');
+        setIsFullscreen(fullscreenState);
+      } catch (error) {
+        console.error('Error checking fullscreen state:', error);
+      }
+    };
+    
+    checkFullscreenState();
     
     // Load additional settings without blocking UI display
     const loadFullSettings = async () => {
@@ -82,6 +101,19 @@ const Layout: React.FC<LayoutProps> = ({ children, onSyncFromNotion, isSyncing =
     }
   };
 
+  // Toggle fullscreen
+  const toggleFullscreen = async () => {
+    try {
+      const newFullscreenState = await window.electron.ipcRenderer.invoke('toggle-fullscreen');
+      setIsFullscreen(newFullscreenState);
+    } catch (error) {
+      console.error('Error toggling fullscreen:', error);
+    }
+  };
+
+  // Determine platform for keyboard shortcut display
+  const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
+
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-[#1a1c23] transition-colors duration-200">
       <nav className="bg-white dark:bg-[#1f2128] shadow-sm transition-colors duration-200">
@@ -104,6 +136,23 @@ const Layout: React.FC<LayoutProps> = ({ children, onSyncFromNotion, isSyncing =
                   <RefreshCw className={`h-5 w-5 ${isSyncing ? 'animate-spin' : ''}`} />
                 </Button>
               )}
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button 
+                      variant="ghost" 
+                      size="icon" 
+                      onClick={toggleFullscreen} 
+                      className="text-gray-500 dark:text-gray-300 hover:text-gray-700 dark:hover:text-gray-200"
+                    >
+                      {isFullscreen ? <Minimize className="h-5 w-5" /> : <Maximize className="h-5 w-5" />}
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p>Toggle fullscreen (F11 or {isMac ? '⌘⇧F' : 'Ctrl+Shift+F'})</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
               <Button 
                 variant="ghost" 
                 size="icon" 

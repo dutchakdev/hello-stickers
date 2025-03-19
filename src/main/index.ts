@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, dialog, protocol, Menu, WebContents } from 'electron';
+import { app, BrowserWindow, ipcMain, dialog, protocol, Menu, WebContents, globalShortcut } from 'electron';
 import * as path from 'path';
 import * as fs from 'fs';
 import { exec, execFile } from 'child_process';
@@ -83,6 +83,21 @@ app.whenReady().then(() => {
   
   // Create window
   createWindow();
+  
+  // Register global keyboard shortcuts
+  globalShortcut.register('F11', () => {
+    if (mainWindow) {
+      const isFullScreen = mainWindow.isFullScreen();
+      mainWindow.setFullScreen(!isFullScreen);
+    }
+  });
+  
+  globalShortcut.register(process.platform === 'darwin' ? 'Command+Shift+F' : 'Control+Shift+F', () => {
+    if (mainWindow) {
+      const isFullScreen = mainWindow.isFullScreen();
+      mainWindow.setFullScreen(!isFullScreen);
+    }
+  });
 });
 
 // Quit when all windows are closed, except on macOS. There, it's common
@@ -100,6 +115,24 @@ app.on('activate', () => {
   if (BrowserWindow.getAllWindows().length === 0) {
     createWindow();
   }
+});
+
+// Add handler for toggling fullscreen
+ipcMain.handle('toggle-fullscreen', () => {
+  if (mainWindow) {
+    const isFullScreen = mainWindow.isFullScreen();
+    mainWindow.setFullScreen(!isFullScreen);
+    return !isFullScreen;
+  }
+  return false;
+});
+
+// Add handler to check fullscreen state
+ipcMain.handle('is-fullscreen', () => {
+  if (mainWindow) {
+    return mainWindow.isFullScreen();
+  }
+  return false;
 });
 
 // Create application support directory and download directories if they don't exist
@@ -809,4 +842,9 @@ ipcMain.handle('create-sticker', async (event, stickerData) => {
     console.error('Error creating sticker:', error);
     throw error;
   }
+});
+
+app.on('will-quit', () => {
+  // Unregister all shortcuts
+  globalShortcut.unregisterAll();
 }); 

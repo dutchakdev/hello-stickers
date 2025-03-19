@@ -10,6 +10,7 @@ import { URL } from 'url';
 import * as googleDrive from '../lib/google-drive';
 import { syncWithNotion } from '../lib/notion';
 import * as querystring from 'querystring';
+import logger, { initLogger, updateLoggerSettings } from '../lib/logger';
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
 if (require('electron-squirrel-startup')) {
@@ -22,7 +23,7 @@ declare const MAIN_WINDOW_PRELOAD_WEBPACK_ENTRY: string;
 
 let mainWindow: BrowserWindow | null = null;
 
-const createWindow = (): void => {
+const createWindow = async (): Promise<void> => {
   // Create the browser window.
   mainWindow = new BrowserWindow({
     width: 1200,
@@ -60,17 +61,32 @@ const createWindow = (): void => {
   // and load the index.html of the app.
   mainWindow.loadURL(MAIN_WINDOW_WEBPACK_ENTRY);
 
-  // Open the DevTools.
-  mainWindow.webContents.openDevTools();
+  // Check if devtools should be enabled
+  try {
+    const settings = await db.getAppSetting('enableDevTools');
+    if (settings && settings.value === true) {
+      mainWindow.webContents.openDevTools();
+    }
+  } catch (error) {
+    console.error('Error checking devtools setting:', error);
+    // Fallback to default behavior in development
+    if (process.env.NODE_ENV === 'development') {
+      mainWindow.webContents.openDevTools();
+    }
+  }
   
   console.log('Preload path:', MAIN_WINDOW_PRELOAD_WEBPACK_ENTRY);
 };
 
 // This method will be called when Electron has finished initialization
 // and is ready to create browser windows.
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
   // Initialize database
   db.initDatabase();
+  
+  // Initialize logger
+  await initLogger();
+  logger.info('Application started');
   
   // Ensure directories exist
   ensureDirectories();
@@ -80,6 +96,9 @@ app.whenReady().then(() => {
   
   // Set up IPC handlers for database operations
   setupDatabaseIpcHandlers();
+  
+  // Set up IPC handlers for debug operations
+  setupDebugIpcHandlers();
   
   // Create window
   createWindow();
@@ -582,10 +601,17 @@ function setupDatabaseIpcHandlers() {
       // Save each setting individually using createOrUpdateAppSetting
       for (const [key, value] of Object.entries(settings)) {
         await db.createOrUpdateAppSetting(key, value);
+        
+        // Update logger settings if extended logs setting was changed
+        if (key === 'extendedLogs') {
+          await updateLoggerSettings();
+          logger.info('Extended logs setting updated', { enabled: value });
+        }
       }
       return { success: true };
     } catch (error) {
       console.error('Error saving general settings:', error);
+      logger.error('Failed to save general settings', { error: error.message });
       throw error;
     }
   });
@@ -708,29 +734,26 @@ ipcMain.handle('download-file', async (event, fileUrl, filePath) => {
   }
 });
 
-// Функція для створення необхідних директорій
+// Ensure required directories exist
 function ensureDirectories() {
+  console.log('Ensuring required directories exist...');
   const directories = [
+    stickersPath,
     imagesPath,
+    previewsPath,
+    downloadsPath,
     downloadedImagesPath,
     downloadedPdfsPath,
-    previewsPath,
-    path.join(appSupportPath, 'pdfs')
+    path.join(app.getPath('userData'), 'db')
   ];
-  
-  console.log('Ensuring required directories exist...');
-  
-  for (const dir of directories) {
-    try {
-      if (!fs.existsSync(dir)) {
-        fs.mkdirSync(dir, { recursive: true });
-        console.log(`Created directory: ${dir}`);
-      }
-    } catch (error) {
-      console.error(`Error creating directory ${dir}:`, error);
+
+  directories.forEach(dir => {
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+      logger.info(`Created directory: ${dir}`);
     }
-  }
-  
+  });
+
   console.log('Directory check completed');
 }
 
@@ -847,4 +870,115 @@ ipcMain.handle('create-sticker', async (event, stickerData) => {
 app.on('will-quit', () => {
   // Unregister all shortcuts
   globalShortcut.unregisterAll();
-}); 
+});
+
+// Setup IPC handlers for debug operations
+function setupDebugIpcHandlers() {
+  // Confirmation dialog
+  ipcMain.handle('confirm-dialog', async (event, options) => {
+    if (!mainWindow) return -1;
+    
+    const { title, message, buttons } = options;
+    const { response } = await dialog.showMessageBox(mainWindow, {
+      type: 'question',
+      title: title || 'Confirm',
+      message: message || 'Are you sure?',
+      buttons: buttons || ['OK', 'Cancel'],
+      defaultId: 1,
+      cancelId: 1
+    });
+    
+    logger.info('Dialog response', { title, response });
+    return response;
+  });
+  
+  // Reset database
+  ipcMain.handle('reset-database', async () => {
+    try {
+      // Get the database path first
+      const dbPath = path.join(app.getPath('userData'), 'db', 'database.json');
+      
+      logger.info('Resetting database', { dbPath });
+      
+      // If the database file exists, delete it
+      if (fs.existsSync(dbPath)) {
+        fs.unlinkSync(dbPath);
+        logger.info('Database file deleted', { dbPath });
+      }
+      
+      // Re-initialize the database
+      db.initDatabase();
+      logger.info('Database re-initialized');
+      
+      return { success: true };
+    } catch (error) {
+      console.error('Error resetting database:', error);
+      logger.error('Failed to reset database', { error: error.message });
+      throw error;
+    }
+  });
+  
+  // Flush downloaded files
+  ipcMain.handle('flush-downloaded-files', async () => {
+    try {
+      // Remove all files from download directories
+      const directories = [
+        downloadedImagesPath,
+        downloadedPdfsPath,
+        stickersPath,
+        imagesPath,
+        previewsPath
+      ];
+      
+      logger.info('Flushing downloaded files', { directories });
+      
+      let totalFileCount = 0;
+      for (const dir of directories) {
+        if (fs.existsSync(dir)) {
+          const files = fs.readdirSync(dir);
+          
+          for (const file of files) {
+            const filePath = path.join(dir, file);
+            
+            // Check if it's a file and not a directory
+            if (fs.statSync(filePath).isFile()) {
+              fs.unlinkSync(filePath);
+              totalFileCount++;
+              
+              if (totalFileCount % 10 === 0) {
+                logger.info(`Deleted ${totalFileCount} files so far`);
+              }
+            }
+          }
+          
+          logger.info(`Flushed directory: ${dir}`, { fileCount: files.length });
+        }
+      }
+      
+      logger.info('Finished flushing files', { totalFileCount });
+      return { success: true, totalFilesDeleted: totalFileCount };
+    } catch (error) {
+      console.error('Error flushing downloaded files:', error);
+      logger.error('Failed to flush downloaded files', { error: error.message });
+      throw error;
+    }
+  });
+  
+  // Restart application
+  ipcMain.handle('restart-app', () => {
+    logger.info('Restarting application');
+    app.relaunch();
+    app.exit(0);
+  });
+  
+  // Add handler to view logs (for dev tools debug tab)
+  ipcMain.handle('get-log-file-path', () => {
+    return logger.getLogFilePath();
+  });
+  
+  // Clear logs
+  ipcMain.handle('clear-logs', async () => {
+    await logger.clearLogs();
+    return { success: true };
+  });
+} 

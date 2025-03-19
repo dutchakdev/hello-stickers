@@ -4,7 +4,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
-import { Settings, Save, Loader2, Trash2, Upload, FileText } from 'lucide-react';
+import { Settings, Save, Loader2, Trash2, Upload, FileText, Bug, RotateCcw, Trash } from 'lucide-react';
 import { useToast } from './ui/use-toast';
 import TextareaAutosize from 'react-textarea-autosize';
 import {
@@ -64,7 +64,9 @@ export function SettingsModal({ defaultOpen = false, children, onOpenChange }: S
   const [isSavingNotion, setIsSavingNotion] = useState(false);
   const [isSavingGoogleDrive, setIsSavingGoogleDrive] = useState(false);
   const [isSavingPrinter, setIsSavingPrinter] = useState(false);
+  const [isSavingDebug, setIsSavingDebug] = useState(false);
   const [availablePrinters, setAvailablePrinters] = useState<string[]>([]);
+  const [logFilePath, setLogFilePath] = useState<string>('');
   
   // State for settings
   const [notionSettings, setNotionSettings] = useState<NotionSettings>({
@@ -80,6 +82,12 @@ export function SettingsModal({ defaultOpen = false, children, onOpenChange }: S
   
   const [printerSettings, setPrinterSettings] = useState<PrinterSetting[]>([]);
   const [selectedSize, setSelectedSize] = useState<string>('40x50mm');
+
+  // Debug settings
+  const [debugSettings, setDebugSettings] = useState({
+    enableDevTools: false,
+    extendedLogs: false
+  });
 
   // Load settings from database on component mount
   useEffect(() => {
@@ -109,6 +117,19 @@ export function SettingsModal({ defaultOpen = false, children, onOpenChange }: S
           if (printerData.length > 0) {
             setSelectedSize(printerData[0].size);
           }
+        }
+        
+        // Load debug settings
+        const generalSettings = await window.electron.ipcRenderer.invoke('db-get-general-settings');
+        setDebugSettings({
+          enableDevTools: generalSettings.enableDevTools || false,
+          extendedLogs: generalSettings.extendedLogs || false
+        });
+        
+        // Get log file path
+        if (generalSettings.extendedLogs) {
+          const logPath = await window.electron.ipcRenderer.invoke('get-log-file-path');
+          setLogFilePath(logPath);
         }
         
         // Get available printers
@@ -209,6 +230,31 @@ export function SettingsModal({ defaultOpen = false, children, onOpenChange }: S
       });
     } finally {
       setIsSavingPrinter(false);
+    }
+  };
+
+  // Save debug settings
+  const saveDebugSettings = async () => {
+    try {
+      setIsSavingDebug(true);
+      const updatedSettings = await window.electron.ipcRenderer.invoke('db-save-general-settings', {
+        enableDevTools: debugSettings.enableDevTools,
+        extendedLogs: debugSettings.extendedLogs
+      });
+      
+      toast({
+        title: 'Debug settings saved',
+        description: 'Your debug settings have been updated successfully. Some changes may require restarting the application.',
+      });
+    } catch (error) {
+      console.error('Failed to save debug settings:', error);
+      toast({
+        title: 'Error saving settings',
+        description: 'Your debug settings could not be saved. Please try again.',
+        variant: 'destructive'
+      });
+    } finally {
+      setIsSavingDebug(false);
     }
   };
 
@@ -314,6 +360,114 @@ export function SettingsModal({ defaultOpen = false, children, onOpenChange }: S
     })));
   };
 
+  // Handle debug setting changes
+  const handleDebugChange = (key: string, value: boolean) => {
+    setDebugSettings(prev => ({
+      ...prev,
+      [key]: value
+    }));
+  };
+  
+  // Reset database
+  const resetDatabase = async () => {
+    try {
+      const confirmed = await window.electron.ipcRenderer.invoke('confirm-dialog', {
+        title: 'Reset Database',
+        message: 'Are you sure you want to reset the database? This action cannot be undone.',
+        buttons: ['Reset', 'Cancel']
+      });
+      
+      if (confirmed === 0) { // User selected "Reset"
+        await window.electron.ipcRenderer.invoke('reset-database');
+        
+        toast({
+          title: 'Database reset',
+          description: 'The database has been reset successfully. The application will now restart.',
+        });
+        
+        // Restart the app to apply changes
+        setTimeout(() => {
+          window.electron.ipcRenderer.invoke('restart-app');
+        }, 2000);
+      }
+    } catch (error) {
+      console.error('Failed to reset database:', error);
+      toast({
+        title: 'Error resetting database',
+        description: 'The database could not be reset. Please try again.',
+        variant: 'destructive'
+      });
+    }
+  };
+  
+  // Flush downloaded files
+  const flushDownloadedFiles = async () => {
+    try {
+      const confirmed = await window.electron.ipcRenderer.invoke('confirm-dialog', {
+        title: 'Flush Downloaded Files',
+        message: 'Are you sure you want to delete all downloaded files? This action cannot be undone.',
+        buttons: ['Delete', 'Cancel']
+      });
+      
+      if (confirmed === 0) { // User selected "Delete"
+        await window.electron.ipcRenderer.invoke('flush-downloaded-files');
+        
+        toast({
+          title: 'Downloads flushed',
+          description: 'All downloaded files have been deleted successfully.',
+        });
+      }
+    } catch (error) {
+      console.error('Failed to flush downloaded files:', error);
+      toast({
+        title: 'Error flushing downloads',
+        description: 'The downloaded files could not be deleted. Please try again.',
+        variant: 'destructive'
+      });
+    }
+  };
+
+  // Update log file path whenever extended logs setting changes
+  useEffect(() => {
+    const updateLogPath = async () => {
+      if (debugSettings.extendedLogs) {
+        const logPath = await window.electron.ipcRenderer.invoke('get-log-file-path');
+        setLogFilePath(logPath);
+      } else {
+        setLogFilePath('');
+      }
+    };
+    
+    updateLogPath();
+  }, [debugSettings.extendedLogs]);
+  
+  // Clear logs
+  const clearLogs = async () => {
+    try {
+      const confirmed = await window.electron.ipcRenderer.invoke('confirm-dialog', {
+        title: 'Clear Logs',
+        message: 'Are you sure you want to clear all logs? This action cannot be undone.',
+        buttons: ['Clear', 'Cancel']
+      });
+      
+      if (confirmed === 0) { // User selected "Clear"
+        await window.electron.ipcRenderer.invoke('clear-logs');
+        
+        toast({
+          title: 'Logs cleared',
+          description: 'All logs have been cleared successfully.',
+        });
+      }
+    } catch (error) {
+      console.error('Failed to clear logs:', error);
+      toast({
+        title: 'Error clearing logs',
+        description: 'The logs could not be cleared. Please try again.',
+        variant: 'destructive'
+      });
+    }
+  };
+
   if (isLoading) {
     return (
       <Dialog defaultOpen={defaultOpen} onOpenChange={onOpenChange}>
@@ -343,9 +497,10 @@ export function SettingsModal({ defaultOpen = false, children, onOpenChange }: S
           <DialogTitle>Settings</DialogTitle>
         </DialogHeader>
         <Tabs defaultValue="integrations" className="w-full">
-          <TabsList className="grid w-full grid-cols-2">
+          <TabsList className="grid w-full grid-cols-3">
             <TabsTrigger value="integrations">Integrations</TabsTrigger>
             <TabsTrigger value="printer">Printer</TabsTrigger>
+            <TabsTrigger value="debug">Debug</TabsTrigger>
           </TabsList>
           <TabsContent value="integrations" className="space-y-4 pt-4">
             <div className="space-y-4">
@@ -554,6 +709,95 @@ export function SettingsModal({ defaultOpen = false, children, onOpenChange }: S
                 {isSavingPrinter && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                 Save Printer Settings
               </Button>
+            </div>
+          </TabsContent>
+          <TabsContent value="debug" className="space-y-4 pt-4">
+            <div className="space-y-4">
+              <h3 className="text-lg font-medium">Debug Settings</h3>
+              
+              <div className="flex items-center space-x-2">
+                <Switch 
+                  id="enable-devtools"
+                  checked={debugSettings.enableDevTools}
+                  onCheckedChange={(checked) => handleDebugChange('enableDevTools', checked)}
+                />
+                <Label htmlFor="enable-devtools">Enable DevTools on startup</Label>
+              </div>
+              
+              <div className="flex items-center space-x-2">
+                <Switch 
+                  id="extended-logs"
+                  checked={debugSettings.extendedLogs}
+                  onCheckedChange={(checked) => handleDebugChange('extendedLogs', checked)}
+                />
+                <Label htmlFor="extended-logs">Extended logs</Label>
+              </div>
+              
+              {debugSettings.extendedLogs && logFilePath && (
+                <div className="p-2 bg-gray-100 dark:bg-gray-800 rounded text-sm">
+                  <p className="font-medium">Log file path:</p>
+                  <p className="text-xs truncate">{logFilePath}</p>
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    className="mt-2 w-full"
+                    onClick={clearLogs}
+                  >
+                    Clear Logs
+                  </Button>
+                </div>
+              )}
+              
+              <div className="flex justify-end">
+                <Button 
+                  onClick={saveDebugSettings} 
+                  disabled={isSavingDebug}
+                  className="flex items-center gap-2"
+                >
+                  {isSavingDebug ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Saving...
+                    </>
+                  ) : (
+                    <>
+                      <Save className="h-4 w-4" />
+                      Save Debug Settings
+                    </>
+                  )}
+                </Button>
+              </div>
+              
+              <div className="space-y-4 pt-4 border-t mt-4">
+                <h3 className="text-lg font-medium">Database Management</h3>
+                <div className="space-y-2">
+                  <p className="text-sm text-gray-500">
+                    Warning: These actions cannot be undone. Make sure you have backups if needed.
+                  </p>
+                  <Button 
+                    variant="destructive"
+                    onClick={resetDatabase}
+                    className="w-full flex items-center justify-center gap-2"
+                  >
+                    <RotateCcw className="h-4 w-4" />
+                    Reset Database
+                  </Button>
+                </div>
+              </div>
+              
+              <div className="space-y-4 pt-4 border-t mt-4">
+                <h3 className="text-lg font-medium">Files Management</h3>
+                <div className="space-y-2">
+                  <Button 
+                    variant="destructive"
+                    onClick={flushDownloadedFiles}
+                    className="w-full flex items-center justify-center gap-2"
+                  >
+                    <Trash className="h-4 w-4" />
+                    Flush Downloaded Files
+                  </Button>
+                </div>
+              </div>
             </div>
           </TabsContent>
         </Tabs>

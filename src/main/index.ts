@@ -78,6 +78,9 @@ app.whenReady().then(() => {
   // Create protocol handlers
   setupProtocols();
   
+  // Set up IPC handlers for database operations
+  setupDatabaseIpcHandlers();
+  
   // Create window
   createWindow();
   
@@ -681,4 +684,24 @@ ipcMain.handle('create-sticker', async (event, stickerData) => {
     console.error('Error creating sticker:', error);
     throw error;
   }
-}); 
+});
+
+// Setup IPC handlers for database operations
+function setupDatabaseIpcHandlers() {
+  // App settings handlers
+  ipcMain.handle('db:getAppSetting', async (event, key) => {
+    return db.getAppSetting(key);
+  });
+  
+  ipcMain.handle('db:createOrUpdateAppSetting', async (event, key, value) => {
+    return await db.createOrUpdateAppSetting(key, value);
+  });
+  
+  ipcMain.handle('db:deleteAppSetting', async (event, key) => {
+    return await db.deleteAppSetting(key);
+  });
+  
+  ipcMain.handle('db:getAllAppSettings', async () => {
+    return db.getAppSettings();
+  });
+} 

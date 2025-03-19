@@ -22,5 +22,13 @@ contextBridge.exposeInMainWorld('electron', {
     removeAllListeners: (channel) => {
       ipcRenderer.removeAllListeners(channel);
     }
+  },
+  // Expose database operations
+  database: {
+    // Settings operations
+    getAppSetting: (key) => ipcRenderer.invoke('db:getAppSetting', key),
+    createOrUpdateAppSetting: (key, value) => ipcRenderer.invoke('db:createOrUpdateAppSetting', key, value),
+    deleteAppSetting: (key) => ipcRenderer.invoke('db:deleteAppSetting', key),
+    getAllAppSettings: () => ipcRenderer.invoke('db:getAllAppSettings')
   }
 }); 

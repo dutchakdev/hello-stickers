@@ -4,6 +4,7 @@ import * as path from 'path';
 import { app } from 'electron';
 import { Low } from 'lowdb';
 import { JSONFile } from 'lowdb/node';
+import { AppSetting } from './schema';
 
 // Data types
 export interface Product {
@@ -65,6 +66,7 @@ interface DatabaseSchema {
   printerSettings: PrinterSetting[];
   notionSetting: NotionSetting | null;
   googleDriveSetting: GoogleDriveSetting | null;
+  appSettings: AppSetting[];
 }
 
 // Default data
@@ -93,7 +95,8 @@ const defaultData: DatabaseSchema = {
   googleDriveSetting: {
     id: '1',
     serviceAccountJson: ''
-  }
+  },
+  appSettings: []
 };
 
 // Database instance
@@ -160,6 +163,11 @@ const dbMethods = {
       // Ensure printerSettings is initialized
       if (!Array.isArray(db.data.printerSettings) || db.data.printerSettings.length === 0) {
         db.data.printerSettings = defaultData.printerSettings;
+      }
+      
+      // Ensure appSettings is initialized
+      if (!Array.isArray(db.data.appSettings)) {
+        db.data.appSettings = [];
       }
       
       db.write();
@@ -380,6 +388,63 @@ const dbMethods = {
     return db.data.googleDriveSetting;
   },
   
+  // App Settings
+  getAppSettings() {
+    if (!isInitialized) this.initDatabase();
+    console.log(`Fetching ${db.data.appSettings.length} app settings`);
+    return db.data.appSettings;
+  },
+
+  getAppSetting(key: string) {
+    if (!isInitialized) this.initDatabase();
+    const setting = db.data.appSettings.find(s => s.key === key) || null;
+    console.log(`Fetching app setting with key ${key}: ${setting ? 'found' : 'not found'}`);
+    return setting;
+  },
+
+  async createOrUpdateAppSetting(key: string, value: any) {
+    if (!isInitialized) this.initDatabase();
+    const now = new Date().toISOString();
+    const existingIndex = db.data.appSettings.findIndex(s => s.key === key);
+    
+    if (existingIndex !== -1) {
+      // Update existing setting
+      db.data.appSettings[existingIndex] = {
+        ...db.data.appSettings[existingIndex],
+        value,
+        updatedAt: now
+      };
+      console.log(`Updated app setting with key ${key}`);
+    } else {
+      // Create new setting
+      const newSetting: AppSetting = {
+        id: Date.now().toString(),
+        key,
+        value,
+        createdAt: now,
+        updatedAt: now
+      };
+      db.data.appSettings.push(newSetting);
+      console.log(`Created new app setting with key ${key}`);
+    }
+    
+    await saveDatabase();
+    return this.getAppSetting(key);
+  },
+
+  async deleteAppSetting(key: string) {
+    if (!isInitialized) this.initDatabase();
+    const index = db.data.appSettings.findIndex(s => s.key === key);
+    if (index !== -1) {
+      db.data.appSettings.splice(index, 1);
+      await saveDatabase();
+      console.log(`Deleted app setting with key ${key}`);
+      return true;
+    }
+    console.log(`Failed to delete app setting: key ${key} not found`);
+    return false;
+  },
+  
   // Clear database
   async clearProducts() {
     if (!isInitialized) this.initDatabase();
@@ -413,5 +478,9 @@ export default {
   getPrinterSettings: dbMethods.getPrinterSettings,
   createPrinterSetting: dbMethods.createPrinterSetting,
   clearProducts: dbMethods.clearProducts,
-  saveDatabase
+  saveDatabase,
+  getAppSettings: dbMethods.getAppSettings,
+  getAppSetting: dbMethods.getAppSetting,
+  createOrUpdateAppSetting: dbMethods.createOrUpdateAppSetting,
+  deleteAppSetting: dbMethods.deleteAppSetting
 }; 

@@ -50,4 +50,12 @@ export interface GoogleDriveSetting {
   serviceAccountJson: string;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface AppSetting {
+  id: string;
+  key: string;
+  value: any;
+  createdAt: string;
+  updatedAt: string;
 } 

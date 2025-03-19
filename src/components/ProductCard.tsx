@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { Product } from '../database/db';
-import './ProductCard.css';
+import { Card, CardContent } from './ui/card';
+import { cn } from '../utils/cn';
+import { ImageOff } from 'lucide-react';
 
 interface ProductCardProps {
   product: Product;
@@ -11,38 +13,60 @@ interface ProductCardProps {
 const ProductCard: React.FC<ProductCardProps> = ({ product, isSelected, onClick }) => {
   const [imageError, setImageError] = useState(false);
 
-  // Отримуємо URL зображення через допоміжну функцію
+  // Get image URL through helper function
   const imageUrl = getImageUrl(product);
   
-  // Дебаг шляху зображення
-  console.log(`Product ${product.sku} image URL: ${imageUrl}, original: ${product.imageUrl}`);
-
   return (
-    <div 
-      className={`product-card ${isSelected ? 'selected' : ''}`}
+    <Card 
+      className={cn(
+        "h-full cursor-pointer transition-all overflow-hidden",
+        "hover:shadow-md hover:-translate-y-1",
+        isSelected && "ring-2 ring-indigo-500 ring-offset-2 dark:ring-offset-gray-900"
+      )}
       onClick={onClick}
     >
-      <div className="product-image">
+      <div className="relative h-44 overflow-hidden bg-gray-100 dark:bg-gray-800">
         {imageUrl && !imageError ? (
           <img 
             src={imageUrl} 
             alt={product.name} 
+            className="w-full h-full object-contain"
             onError={(e) => {
               console.error(`Error loading image: ${imageUrl}`);
               setImageError(true);
             }}
           />
         ) : (
-          <div className="no-image">No Image</div>
+          <div className="flex items-center justify-center h-full text-gray-400 dark:text-gray-500">
+            <div className="flex flex-col items-center">
+              <ImageOff className="w-8 h-8 mb-2" />
+              <span className="text-sm">No Image</span>
+            </div>
+          </div>
         )}
       </div>
-      <div className="product-info">
-        <h3>{product.name}</h3>
-        <p className="sku">SKU: {product.sku}</p>
-        <p className="type">Type: {product.type}</p>
-        {product.barcode && <p className="barcode">Barcode: {product.barcode}</p>}
-      </div>
-    </div>
+      <CardContent className="p-4">
+        <h3 className="text-base font-medium mb-2 text-gray-900 dark:text-gray-100 line-clamp-1">{product.name}</h3>
+        <div className="space-y-1">
+          <p className="text-sm font-mono text-gray-700 dark:text-gray-300">SKU: {product.sku}</p>
+          <div className="flex flex-wrap gap-2">
+            <span className="px-2 py-1 text-xs rounded-full bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-100">
+              {product.type}
+            </span>
+            {product.price && (
+              <span className="px-2 py-1 text-xs rounded-full bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-100">
+                ${product.price.toFixed(2)}
+              </span>
+            )}
+          </div>
+          {product.barcode && (
+            <p className="text-xs font-mono mt-2 text-gray-500 dark:text-gray-400">
+              Barcode: {product.barcode}
+            </p>
+          )}
+        </div>
+      </CardContent>
+    </Card>
   );
 };
 

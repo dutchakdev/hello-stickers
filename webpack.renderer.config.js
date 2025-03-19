@@ -44,6 +44,7 @@ module.exports = {
             os: require.resolve('os-browserify/browser'),
             zlib: require.resolve('browserify-zlib'),
             querystring: require.resolve('querystring-es3'),
+            fs: false, // browser-compatible polyfill not needed, using electron's node integration
         }
     },
     plugins: [
@@ -54,6 +55,9 @@ module.exports = {
     ],
     externals: {
         'better-sqlite3': 'commonjs better-sqlite3',
-        'electron': 'commonjs electron'
+        'electron': 'commonjs electron',
+        'fs': 'commonjs fs',
+        'path': 'commonjs path',
+        'url': 'commonjs url'
     }
 }; 

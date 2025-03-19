@@ -4,7 +4,6 @@ import { ipcRenderer } from 'electron';
 import ProductsPage from '../pages/ProductsPage';
 import SettingsPage from '../pages/SettingsPage';
 import Layout from '../components/Layout';
-import { Toaster } from '../components/ui/toaster';
 
 const App: React.FC = () => {
   const [appPaths, setAppPaths] = useState<{
@@ -28,15 +27,12 @@ const App: React.FC = () => {
   }
 
   return (
-    <>
-      <Layout>
-        <Routes>
-          <Route path="/" element={<ProductsPage />} />
-          <Route path="/settings" element={<SettingsPage />} />
-        </Routes>
-      </Layout>
-      <Toaster />
-    </>
+    <Layout>
+      <Routes>
+        <Route path="/" element={<ProductsPage />} />
+        <Route path="/settings" element={<SettingsPage />} />
+      </Routes>
+    </Layout>
   );
 };
 

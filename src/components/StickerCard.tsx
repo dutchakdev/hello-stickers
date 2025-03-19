@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { Sticker } from '../database/db';
-import { Loader } from './ui/loader';
+import { Card, CardContent, CardFooter } from './ui/card';
+import { Button } from './ui/button';
+import { Loader2, FileText, Printer } from 'lucide-react';
 
 export interface StickerCardProps {
   sticker: Sticker;
@@ -33,12 +35,14 @@ const StickerCard: React.FC<StickerCardProps> = ({ sticker, onPrint }) => {
   const hasPreview = sticker.previewUrl && !imageError;
 
   return (
-    <div className="border rounded-lg overflow-hidden bg-white shadow-sm flex flex-col">
-      <div className="p-4 flex-grow">
-        <h4 className="font-medium mb-1 truncate" title={sticker.name}>{sticker.name}</h4>
-        <p className="text-sm text-gray-500 mb-3">Size: {sticker.size}</p>
+    <Card className="h-full overflow-hidden flex flex-col transition-all hover:shadow-md">
+      <CardContent className="p-4 flex-grow">
+        <h4 className="font-medium mb-1 truncate text-gray-900 dark:text-gray-100" title={sticker.name}>
+          {sticker.name}
+        </h4>
+        <p className="text-sm text-gray-500 dark:text-gray-400 mb-3">Size: {sticker.size}</p>
         
-        <div className="h-36 flex items-center justify-center border rounded bg-gray-50 mb-3">
+        <div className="h-36 flex items-center justify-center border rounded bg-gray-50 dark:bg-gray-800 dark:border-gray-700 mb-3">
           {hasPreview ? (
             <img 
               src={sticker.previewUrl} 
@@ -47,35 +51,42 @@ const StickerCard: React.FC<StickerCardProps> = ({ sticker, onPrint }) => {
               className="max-w-full max-h-full object-contain"
             />
           ) : sticker.pdfUrl ? (
-            <a 
-              href="#" 
+            <Button 
+              variant="outline"
+              size="sm"
               onClick={openPdf}
-              className="text-sm text-blue-500 hover:text-blue-700 border border-blue-500 hover:bg-blue-50 rounded px-3 py-2 transition-colors"
+              className="text-sm gap-2"
             >
-              Open PDF in new window
-            </a>
+              <FileText className="h-4 w-4" />
+              View PDF
+            </Button>
           ) : (
-            <span className="text-sm text-gray-400">
+            <span className="text-sm text-gray-400 dark:text-gray-500 flex flex-col items-center">
+              <FileText className="h-5 w-5 mb-1" />
               No preview available
             </span>
           )}
         </div>
-      </div>
+      </CardContent>
       
-      <button 
-        className="w-full py-2 bg-blue-500 hover:bg-blue-600 text-white font-medium transition-colors flex items-center justify-center"
-        onClick={handlePrintClick}
-        disabled={isLoading}
-      >
-        {isLoading ? (
-          <>
-            <Loader size="sm" className="mr-2" /> Printing...
-          </>
-        ) : (
-          'Print'
-        )}
-      </button>
-    </div>
+      <CardFooter className="px-3 pb-3 pt-0">
+        <Button 
+          className="w-full gap-2"
+          onClick={handlePrintClick}
+          disabled={isLoading}
+        >
+          {isLoading ? (
+            <>
+              <Loader2 className="h-4 w-4 animate-spin" /> Printing...
+            </>
+          ) : (
+            <>
+              <Printer className="h-4 w-4" /> Print
+            </>
+          )}
+        </Button>
+      </CardFooter>
+    </Card>
   );
 };
 

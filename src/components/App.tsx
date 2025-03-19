@@ -6,6 +6,7 @@ import SearchBar from './SearchBar';
 import { Skeleton } from './ui/skeleton';
 import { Loader } from './ui/loader';
 import ProductDetailsDrawer from './ProductDetailsDrawer';
+import Layout from './Layout';
 
 const App: React.FC = () => {
   const [currentPage, setCurrentPage] = useState<'products' | 'settings'>('products');
@@ -60,9 +61,18 @@ const App: React.FC = () => {
         const types = Array.from(new Set(productsData.map((p: Product) => p.type))) as string[];
         setProductTypes(types);
         
-        setIsLoading(false);
+        // Load theme and other settings
+        try {
+          const generalSettings = await window.electron.ipcRenderer.invoke('db-get-general-settings');
+          if (generalSettings) {
+            document.title = generalSettings.appName || 'Label Printer';
+          }
+        } catch (error) {
+          console.error('Error loading settings:', error);
+        }
       } catch (error) {
-        console.error('Error loading products:', error);
+        console.error('Error loading data:', error);
+      } finally {
         setIsLoading(false);
       }
     };
@@ -402,15 +412,6 @@ const App: React.FC = () => {
           </div>
         )}
       </div>
-      
-      {/* Product Details Drawer */}
-      {selectedProduct && (
-        <ProductDetailsDrawer
-          product={selectedProduct}
-          isOpen={isProductDetailsOpen}
-          onOpenChange={setIsProductDetailsOpen}
-        />
-      )}
     </div>
   );
 
@@ -556,30 +557,21 @@ const App: React.FC = () => {
   );
 
   return (
-    <div className="flex flex-col h-screen bg-gray-50">
-      <header className="bg-white border-b px-6 py-4 flex justify-between items-center">
-        <h1 className="text-2xl font-bold">Label Printer</h1>
-        <nav className="flex space-x-2">
-          <button 
-            className={`px-4 py-2 rounded ${currentPage === 'products' ? 'bg-blue-500 text-white' : 'bg-gray-200 hover:bg-gray-300'}`}
-            onClick={() => setCurrentPage('products')}
-          >
-            Products
-          </button>
-          <button 
-            className={`px-4 py-2 rounded ${currentPage === 'settings' ? 'bg-blue-500 text-white' : 'bg-gray-200 hover:bg-gray-300'}`}
-            onClick={() => setCurrentPage('settings')}
-          >
-            Settings
-          </button>
-        </nav>
-      </header>
-
-      <main className="flex-1 overflow-auto">
+    <Layout>
+      <div className="flex flex-col">
         {currentPage === 'products' && renderProductsPage()}
         {currentPage === 'settings' && renderSettingsPage()}
-      </main>
-    </div>
+      </div>
+      
+      {/* Product details drawer */}
+      {selectedProduct && (
+        <ProductDetailsDrawer 
+          product={selectedProduct}
+          isOpen={isProductDetailsOpen}
+          onOpenChange={setIsProductDetailsOpen}
+        />
+      )}
+    </Layout>
   );
 };
 

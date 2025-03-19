@@ -1,14 +1,28 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, lazy, Suspense } from 'react';
 import { Product, Sticker } from '../database/db';
 import ProductCard from './ProductCard';
 import StickerCard from './StickerCard';
 import SearchBar from './SearchBar';
 import { Skeleton } from './ui/skeleton';
 import { Loader } from './ui/loader';
-import ProductDetailsDrawer from './ProductDetailsDrawer';
 import Layout from './Layout';
+import { RefreshCw } from 'lucide-react';
+
+// Lazy load the ProductDetailsDrawer to improve initial load time
+const ProductDetailsDrawer = lazy(() => import('./ProductDetailsDrawer'));
 
 const App: React.FC = () => {
+  // Initialize app with dark theme and zinc color scheme immediately
+  useEffect(() => {
+    // Apply dark theme with zinc colors immediately for better UX
+    document.documentElement.classList.add('dark');
+    document.documentElement.classList.add('theme-zinc');
+    
+    // Store in localStorage
+    localStorage.setItem('theme', 'dark');
+    localStorage.setItem('themeColor', 'zinc');
+  }, []);
+
   const [currentPage, setCurrentPage] = useState<'products' | 'settings'>('products');
   const [products, setProducts] = useState<Product[]>([]);
   const [filteredProducts, setFilteredProducts] = useState<Product[]>([]);
@@ -45,8 +59,11 @@ const App: React.FC = () => {
   const [isLoadingProductDetails, setIsLoadingProductDetails] = useState(false);
   const [isProductDetailsOpen, setIsProductDetailsOpen] = useState(false);
 
-  // Load products on mount
+  // Load products on mount - with optimized loading strategy
   useEffect(() => {
+    // Set up app title immediately for better UX
+    document.title = 'Label Printer';
+    
     const loadProducts = async () => {
       try {
         setIsLoading(true);
@@ -60,24 +77,30 @@ const App: React.FC = () => {
         // Extract unique product types
         const types = Array.from(new Set(productsData.map((p: Product) => p.type))) as string[];
         setProductTypes(types);
-        
-        // Load theme and other settings
-        try {
-          const generalSettings = await window.electron.ipcRenderer.invoke('db-get-general-settings');
-          if (generalSettings) {
-            document.title = generalSettings.appName || 'Label Printer';
-          }
-        } catch (error) {
-          console.error('Error loading settings:', error);
-        }
       } catch (error) {
-        console.error('Error loading data:', error);
+        console.error('Error loading products:', error);
       } finally {
         setIsLoading(false);
       }
     };
     
+    // Load general settings in a separate effect to avoid blocking product loading
+    const loadGeneralSettings = async () => {
+      try {
+        const generalSettings = await window.electron.ipcRenderer.invoke('db-get-general-settings');
+        if (generalSettings?.appName) {
+          document.title = generalSettings.appName;
+        }
+      } catch (error) {
+        console.error('Error loading general settings:', error);
+      }
+    };
+    
+    // Load products immediately
     loadProducts();
+    
+    // Load settings after a small delay to prioritize product display
+    setTimeout(loadGeneralSettings, 300);
   }, []);
 
   // Load stickers when a product is selected
@@ -99,20 +122,18 @@ const App: React.FC = () => {
     loadStickers();
   }, [selectedProduct]);
 
-  // Load settings on mount
+  // Load settings on mount - with deferred loading
   useEffect(() => {
     const loadSettings = async () => {
       try {
         // Load Notion settings
         const notionData = await window.electron.ipcRenderer.invoke('db-get-notion-settings');
-        console.log('Loaded Notion settings:', notionData);
         if (notionData) {
           setNotionSettings(notionData);
         }
         
         // Load Google Drive settings
         const googleDriveData = await window.electron.ipcRenderer.invoke('db-get-google-drive-settings');
-        console.log('Loaded Google Drive settings:', googleDriveData);
         if (googleDriveData) {
           setGoogleDriveSettings(googleDriveData);
         }
@@ -129,7 +150,8 @@ const App: React.FC = () => {
       }
     };
     
-    loadSettings();
+    // Defer loading settings to improve initial render time
+    setTimeout(loadSettings, 1000);
   }, []);
 
   // Filter products by type
@@ -337,27 +359,6 @@ const App: React.FC = () => {
     <div className="p-4">
       <div className="flex justify-between items-center mb-4">
         <h1 className="text-2xl font-bold">Products</h1>
-        <div className="flex space-x-2">
-          <button 
-            onClick={handleRefresh} 
-            className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 flex items-center"
-            disabled={isLoading}
-          >
-            {isLoading ? (
-              <>
-                <Loader size="sm" className="mr-2" /> Syncing...
-              </>
-            ) : (
-              'Sync from Notion'
-            )}
-          </button>
-          <button 
-            onClick={() => setCurrentPage('settings')} 
-            className="px-4 py-2 bg-gray-500 text-white rounded hover:bg-gray-600"
-          >
-            Settings
-          </button>
-        </div>
       </div>
       
       <SearchBar 
@@ -389,23 +390,25 @@ const App: React.FC = () => {
           ))
         ) : (
           <div className="col-span-full text-center py-12 px-4">
-            <div className="bg-white border border-gray-200 rounded-lg p-8 shadow-sm max-w-md mx-auto">
-              <svg className="w-16 h-16 text-gray-400 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+            <div className="bg-white dark:bg-[#1f2128] border border-gray-200 dark:border-gray-700 rounded-lg p-8 shadow-sm max-w-md mx-auto">
+              <svg className="w-16 h-16 text-gray-400 dark:text-gray-500 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9.172 16.172a4 4 0 015.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
               </svg>
-              <h3 className="text-lg font-medium text-gray-900 mb-2">Data not found</h3>
-              <p className="text-gray-500 mb-6">Do you want to try sync data?</p>
+              <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">Data not found</h3>
+              <p className="text-gray-500 dark:text-gray-400 mb-6">Do you want to try sync data?</p>
               <button 
                 onClick={handleRefresh} 
-                className="w-full px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors flex items-center justify-center"
+                className="w-48 mx-auto px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors flex items-center justify-center"
                 disabled={isLoading}
               >
                 {isLoading ? (
                   <>
-                    <Loader size="sm" className="mr-2" /> Syncing...
+                    <RefreshCw className="h-4 w-4 animate-spin mr-2" /> Syncing...
                   </>
                 ) : (
-                  'Sync from Notion'
+                  <>
+                    <RefreshCw className="h-4 w-4 mr-2" /> Sync
+                  </>
                 )}
               </button>
             </div>
@@ -415,161 +418,21 @@ const App: React.FC = () => {
     </div>
   );
 
-  const renderSettingsPage = () => (
-    <div className="p-4">
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-bold">Settings</h1>
-        <button 
-          onClick={() => setCurrentPage('products')} 
-          className="px-4 py-2 bg-gray-500 text-white rounded hover:bg-gray-600"
-        >
-          Back to Products
-        </button>
-      </div>
-      
-      <div className="space-y-8">
-        {/* Notion Settings */}
-        <div className="bg-card rounded-lg border shadow-sm p-6">
-          <h2 className="text-xl font-semibold mb-4">Notion Integration</h2>
-          
-          <div className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium mb-1">API Key</label>
-              <input 
-                type="password" 
-                value={notionSettings.apiKey || ''} 
-                onChange={(e) => setNotionSettings({...notionSettings, apiKey: e.target.value})}
-                className="w-full p-2 rounded border focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-              />
-            </div>
-            
-            <div>
-              <label className="block text-sm font-medium mb-1">Database ID</label>
-              <input 
-                type="text" 
-                value={notionSettings.databaseId || ''} 
-                onChange={(e) => setNotionSettings({...notionSettings, databaseId: e.target.value})}
-                className="w-full p-2 rounded border focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-              />
-            </div>
-            
-            <div>
-              <button 
-                onClick={handleSaveNotionSettings}
-                disabled={isSavingNotionSettings}
-                className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 flex items-center"
-              >
-                {isSavingNotionSettings ? (
-                  <>
-                    <Loader size="sm" className="mr-2" /> Saving...
-                  </>
-                ) : (
-                  'Save Notion Settings'
-                )}
-              </button>
-              
-              <p className="text-sm text-muted-foreground mt-2">
-                Last synced: {notionSettings.lastSyncedAt ? new Date(notionSettings.lastSyncedAt).toLocaleString() : 'Never'}
-              </p>
-            </div>
-          </div>
-        </div>
-        
-        {/* Google Drive Settings */}
-        <div className="bg-card rounded-lg border shadow-sm p-6">
-          <h2 className="text-xl font-semibold mb-4">Google Drive Integration</h2>
-          
-          <div className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium mb-1">Service Account JSON</label>
-              <textarea
-                value={googleDriveSettings.serviceAccountJson || ''}
-                onChange={(e) => setGoogleDriveSettings({...googleDriveSettings, serviceAccountJson: e.target.value})}
-                placeholder="Paste your Google service account JSON here..."
-                rows={6}
-                className="w-full p-2 rounded border font-mono text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-              />
-            </div>
-            
-            <div>
-              <button 
-                onClick={handleSaveGoogleDriveSettings}
-                disabled={isSavingGoogleSettings}
-                className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 flex items-center"
-              >
-                {isSavingGoogleSettings ? (
-                  <>
-                    <Loader size="sm" className="mr-2" /> Saving...
-                  </>
-                ) : (
-                  'Save Google Drive Settings'
-                )}
-              </button>
-            </div>
-          </div>
-        </div>
-        
-        {/* Printer Settings */}
-        <div className="bg-card rounded-lg border shadow-sm p-6">
-          <h2 className="text-xl font-semibold mb-4">Printer Configuration</h2>
-          
-          <div className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium mb-1">Printer Name</label>
-              <select 
-                value={printerSettings.printerName || ''} 
-                onChange={(e) => setPrinterSettings({...printerSettings, printerName: e.target.value})}
-                className="w-full p-2 rounded border focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-              >
-                <option value="">Select a printer</option>
-                {availablePrinters.map(printer => (
-                  <option key={printer} value={printer}>{printer}</option>
-                ))}
-              </select>
-            </div>
-            
-            <div className="flex space-x-4">
-              <button 
-                onClick={handleAddPrinterSetting}
-                disabled={isSavingPrinterSettings}
-                className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 flex items-center"
-              >
-                {isSavingPrinterSettings ? (
-                  <>
-                    <Loader size="sm" className="mr-2" /> Saving...
-                  </>
-                ) : (
-                  'Save Printer Settings'
-                )}
-              </button>
-              
-              <button 
-                onClick={handleDeletePrinterSetting}
-                className="px-4 py-2 bg-red-500 text-white rounded hover:bg-red-600"
-              >
-                Delete Printer Setting
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-
   return (
-    <Layout>
+    <Layout onSyncFromNotion={handleRefresh} isSyncing={isLoading}>
       <div className="flex flex-col">
         {currentPage === 'products' && renderProductsPage()}
-        {currentPage === 'settings' && renderSettingsPage()}
       </div>
       
       {/* Product details drawer */}
       {selectedProduct && (
-        <ProductDetailsDrawer 
-          product={selectedProduct}
-          isOpen={isProductDetailsOpen}
-          onOpenChange={setIsProductDetailsOpen}
-        />
+        <Suspense fallback={<div>Loading...</div>}>
+          <ProductDetailsDrawer 
+            product={selectedProduct}
+            isOpen={isProductDetailsOpen}
+            onOpenChange={setIsProductDetailsOpen}
+          />
+        </Suspense>
       )}
     </Layout>
   );

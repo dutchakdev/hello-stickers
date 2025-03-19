@@ -83,30 +83,30 @@ const ProductDetailsDrawer: React.FC<ProductDetailsDrawerProps> = ({
             <h2 className="text-2xl font-semibold">{product.name}</h2>
             <div className="grid grid-cols-2 gap-4 mt-2">
               <div className="meta-item">
-                <span className="font-medium text-gray-500">SKU:</span>
+                <span className="font-medium text-gray-500 dark:text-gray-400">SKU:</span>
                 <span className="ml-2">{product.sku}</span>
               </div>
               <div className="meta-item">
-                <span className="font-medium text-gray-500">Type:</span>
+                <span className="font-medium text-gray-500 dark:text-gray-400">Type:</span>
                 <span className="ml-2">{product.type}</span>
               </div>
               {product.barcode && (
                 <div className="meta-item">
-                  <span className="font-medium text-gray-500">Barcode:</span>
+                  <span className="font-medium text-gray-500 dark:text-gray-400">Barcode:</span>
                   <span className="ml-2">{product.barcode}</span>
                 </div>
               )}
             </div>
           </div>
           
-          <div className="divider h-px bg-gray-200 my-4"></div>
+          <div className="divider h-px bg-gray-200 dark:bg-gray-700 my-4"></div>
           
           <h3 className="text-xl font-medium mb-4">Stickers</h3>
           
           {isLoading ? (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {Array(2).fill(0).map((_, index) => (
-                <div key={index} className="border rounded-lg p-4 shadow-sm">
+                <div key={index} className="border border-gray-200 dark:border-gray-700 rounded-lg p-4 shadow-sm dark:bg-[#1f2128]">
                   <Skeleton className="h-40 w-full mb-4" />
                   <Skeleton className="h-6 w-3/4 mb-2" />
                   <Skeleton className="h-4 w-1/2" />
@@ -114,19 +114,19 @@ const ProductDetailsDrawer: React.FC<ProductDetailsDrawerProps> = ({
               ))}
             </div>
           ) : stickers.length === 0 ? (
-            <div className="text-center p-8 text-gray-500">
+            <div className="text-center p-8 text-gray-500 dark:text-gray-400">
               No stickers available for this product
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               {stickers.map(sticker => (
-                <div key={sticker.id} className="sticker-card border rounded-lg overflow-hidden">
+                <div key={sticker.id} className="sticker-card border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
                   <div className="p-4">
                     <h4 className="font-medium">{sticker.name}</h4>
                     <p className="text-sm text-gray-500">Size: {sticker.size}</p>
                   </div>
                   
-                  <div className="sticker-preview bg-gray-50 p-6 flex justify-center items-center border-t">
+                  <div className="sticker-preview bg-gray-50 dark:bg-[#1f2128] p-6 flex justify-center items-center border-t border-gray-200 dark:border-gray-700">
                     {sticker.previewUrl ? (
                       <img 
                         src={sticker.previewUrl} 

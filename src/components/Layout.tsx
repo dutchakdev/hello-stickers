@@ -1,93 +1,100 @@
 import React, { useEffect, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { Moon, Sun, Settings as SettingsIcon } from 'lucide-react';
+import { Moon, Sun, Settings as SettingsIcon, RefreshCw } from 'lucide-react';
 import { Button } from './ui/button';
 import { SettingsModal } from './SettingsModal';
 import { Toaster } from './ui/toaster';
 
 interface LayoutProps {
   children: React.ReactNode;
+  onSyncFromNotion?: () => Promise<void>;
+  isSyncing?: boolean;
 }
 
-const Layout: React.FC<LayoutProps> = ({ children }) => {
+const Layout: React.FC<LayoutProps> = ({ children, onSyncFromNotion, isSyncing = false }) => {
   const location = useLocation();
-  const [theme, setTheme] = useState<'light' | 'dark'>('light');
-  const [appName, setAppName] = useState('Label Printer');
+  const [theme, setTheme] = useState<'light' | 'dark'>('dark');
+  const [appName, setAppName] = useState('HEY ❤️');
   
-  // Load theme from local storage
+  // Apply dark theme immediately for consistent UX
   useEffect(() => {
-    // Load theme
-    const savedTheme = localStorage.getItem('theme') as 'light' | 'dark' | null;
-    if (savedTheme) {
-      setTheme(savedTheme);
-      if (savedTheme === 'dark') {
-        document.documentElement.classList.add('dark');
-      } else {
-        document.documentElement.classList.remove('dark');
-      }
-    }
+    // Apply dark theme immediately
+    document.documentElement.classList.add('dark');
+    document.documentElement.classList.add('theme-zinc');
+    setTheme('dark');
     
-    // Load app name
-    const generalSettingsStr = localStorage.getItem('generalSettings');
-    if (generalSettingsStr) {
+    // Load additional settings without blocking UI display
+    const loadFullSettings = async () => {
       try {
-        const generalSettings = JSON.parse(generalSettingsStr);
-        if (generalSettings?.appName) {
-          setAppName(generalSettings.appName);
+        // Try to load general settings from the database
+        const generalSettings = await window.electron.ipcRenderer.invoke('db-get-general-settings');
+        
+        if (generalSettings) {
+          // Set app name if available (not critical for initial rendering)
+          if (generalSettings.appName) {
+            // setAppName(generalSettings.appName);
+          }
         }
       } catch (error) {
-        console.error('Error parsing general settings:', error);
+        console.error('Error loading general settings:', error);
       }
-    }
+    };
+    
+    // Defer loading full settings to optimize initial render
+    setTimeout(loadFullSettings, 500);
   }, []);
   
-  const toggleTheme = () => {
+  // Optimized theme toggle function
+  const toggleTheme = async () => {
     const newTheme = theme === 'light' ? 'dark' : 'light';
     setTheme(newTheme);
     
+    // Apply theme changes immediately
     if (newTheme === 'dark') {
       document.documentElement.classList.add('dark');
     } else {
       document.documentElement.classList.remove('dark');
     }
     
-    // Save to local storage
+    // Always ensure the zinc theme is applied
+    document.documentElement.classList.add('theme-zinc');
+    
+    // Save to local storage (fast operation)
     localStorage.setItem('theme', newTheme);
+    localStorage.setItem('themeColor', 'zinc');
+    
+    // Save to database asynchronously (don't await, let it happen in background)
+    try {
+      window.electron.ipcRenderer.invoke('db-save-general-settings', {
+        theme: newTheme
+      });
+    } catch (error) {
+      console.error('Error saving theme preference:', error);
+    }
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 transition-colors duration-200">
-      <nav className="bg-white dark:bg-gray-800 shadow-sm transition-colors duration-200">
+    <div className="min-h-screen bg-gray-50 dark:bg-[#1a1c23] transition-colors duration-200">
+      <nav className="bg-white dark:bg-[#1f2128] shadow-sm transition-colors duration-200">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between h-16">
             <div className="flex">
               <div className="flex-shrink-0 flex items-center">
                 <h1 className="text-xl font-bold text-gray-900 dark:text-white transition-colors duration-200">{appName}</h1>
               </div>
-              <div className="ml-6 flex space-x-8">
-                <Link 
-                  to="/" 
-                  className={`inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium ${
-                    location.pathname === '/' 
-                      ? 'border-indigo-500 text-gray-900 dark:text-white' 
-                      : 'border-transparent text-gray-500 dark:text-gray-300 hover:text-gray-700 dark:hover:text-gray-200 hover:border-gray-300 dark:hover:border-gray-700'
-                  } transition-colors duration-200`}
-                >
-                  Products
-                </Link>
-                <Link 
-                  to="/stickers" 
-                  className={`inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium ${
-                    location.pathname === '/stickers' 
-                      ? 'border-indigo-500 text-gray-900 dark:text-white' 
-                      : 'border-transparent text-gray-500 dark:text-gray-300 hover:text-gray-700 dark:hover:text-gray-200 hover:border-gray-300 dark:hover:border-gray-700'
-                  } transition-colors duration-200`}
-                >
-                  Stickers
-                </Link>
-              </div>
             </div>
             <div className="flex items-center space-x-4">
+              {onSyncFromNotion && (
+                <Button 
+                  variant="ghost" 
+                  size="icon" 
+                  onClick={onSyncFromNotion}
+                  disabled={isSyncing}
+                  className="text-gray-500 dark:text-gray-300 hover:text-gray-700 dark:hover:text-gray-200"
+                >
+                  <RefreshCw className={`h-5 w-5 ${isSyncing ? 'animate-spin' : ''}`} />
+                </Button>
+              )}
               <Button 
                 variant="ghost" 
                 size="icon" 
@@ -112,13 +119,6 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
         {children}
       </main>
-      <footer className="bg-white dark:bg-gray-800 shadow-sm transition-colors duration-200 mt-auto">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-          <p className="text-center text-sm text-gray-500 dark:text-gray-400">
-            {appName} © {new Date().getFullYear()}
-          </p>
-        </div>
-      </footer>
       <Toaster />
     </div>
   );

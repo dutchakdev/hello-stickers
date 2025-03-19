@@ -21,11 +21,11 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, isSelected, onClick 
       className={cn(
         "h-full cursor-pointer transition-all overflow-hidden",
         "hover:shadow-md hover:-translate-y-1",
-        isSelected && "ring-2 ring-indigo-500 ring-offset-2 dark:ring-offset-gray-900"
+        isSelected && "ring-2 ring-indigo-500 ring-offset-2 dark:ring-offset-[#1a1c23]"
       )}
       onClick={onClick}
     >
-      <div className="relative h-44 overflow-hidden bg-gray-100 dark:bg-gray-800">
+      <div className="relative h-44 overflow-hidden bg-gray-100 dark:bg-[#1f2128]">
         {imageUrl && !imageError ? (
           <img 
             src={imageUrl} 

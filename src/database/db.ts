@@ -41,9 +41,17 @@ export interface PrinterSetting {
   printerName: string;
   options: {
     media?: string;
-    orientation?: number;
+    orientation?: 'portrait' | 'landscape';
+    margins?: {
+      top: number;
+      right: number;
+      bottom: number;
+      left: number;
+      units: 'mm' | 'in' | 'pt';
+    };
+    scale?: number;
     fitToPage?: boolean;
-    printScaling?: string;
+    printScaling?: 'none' | 'fit' | 'fill';
   };
   createdAt: string;
   updatedAt: string;
@@ -82,9 +90,17 @@ const defaultData: DatabaseSchema = {
       printerName: 'Default Printer',
       options: {
         media: 'Custom.50x30mm',
-        orientation: 3,
+        orientation: 'portrait',
+        margins: {
+          top: 0,
+          right: 0,
+          bottom: 0,
+          left: 0,
+          units: 'mm'
+        },
+        scale: 100,
         fitToPage: true,
-        printScaling: 'auto'
+        printScaling: 'fit'
       },
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString()
@@ -370,9 +386,17 @@ const dbMethods = {
         printerName: settings.printerName,
         options: {
           media: 'Custom.50x30mm',
-          orientation: 3,
+          orientation: 'portrait',
+          margins: {
+            top: 0,
+            right: 0,
+            bottom: 0,
+            left: 0,
+            units: 'mm'
+          },
+          scale: 100,
           fitToPage: true,
-          printScaling: 'auto'
+          printScaling: 'fit'
         },
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString()

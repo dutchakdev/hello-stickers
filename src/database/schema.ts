@@ -28,9 +28,17 @@ export interface PrinterSetting {
   printerName: string;
   options: {
     media?: string;
-    orientation?: number;
+    orientation?: 'portrait' | 'landscape';
+    margins?: {
+      top: number;
+      right: number;
+      bottom: number;
+      left: number;
+      units: 'mm' | 'in' | 'pt';
+    };
+    scale?: number;
     fitToPage?: boolean;
-    printScaling?: string;
+    printScaling?: 'none' | 'fit' | 'fill';
   };
   createdAt: string;
   updatedAt: string;

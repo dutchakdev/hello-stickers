@@ -436,20 +436,68 @@ ipcMain.handle('print-sticker', async (event, stickerId) => {
         const command = `lp -d "${printerSetting.printerName}" -n 1`;
         let options = '';
         
-        if (printerSetting.options.media) {
-          options += ` -o media=${printerSetting.options.media}`;
-        }
-        
+        // Add orientation option
         if (printerSetting.options.orientation) {
-          options += ` -o orientation-requested=${printerSetting.options.orientation}`;
+          const orientationValue = printerSetting.options.orientation === 'landscape' ? '4' : '3';
+          options += ` -o orientation-requested=${orientationValue}`;
         }
         
+        // Add margins if specified
+        if (printerSetting.options.margins) {
+          const { top, right, bottom, left, units } = printerSetting.options.margins;
+          // Convert margins to points (1/72 inch) as required by CUPS
+          const toPoints = (value: number, unit: string) => {
+            switch (unit) {
+              case 'mm':
+                return value * 2.83465; // 1mm = 2.83465pt
+              case 'in':
+                return value * 72; // 1in = 72pt
+              case 'pt':
+                return value;
+              default:
+                return value;
+            }
+          };
+          
+          const marginTop = toPoints(top, units);
+          const marginRight = toPoints(right, units);
+          const marginBottom = toPoints(bottom, units);
+          const marginLeft = toPoints(left, units);
+          
+          options += ` -o page-top=${marginTop}pt`;
+          options += ` -o page-right=${marginRight}pt`;
+          options += ` -o page-bottom=${marginBottom}pt`;
+          options += ` -o page-left=${marginLeft}pt`;
+        }
+        
+        // Add scaling option
+        if (printerSetting.options.scale) {
+          options += ` -o scaling=${printerSetting.options.scale}`;
+        }
+        
+        // Add fit-to-page option
         if (printerSetting.options.fitToPage) {
           options += ` -o fit-to-page`;
         }
         
+        // Add print scaling option
         if (printerSetting.options.printScaling) {
-          options += ` -o print-scaling=${printerSetting.options.printScaling}`;
+          switch (printerSetting.options.printScaling) {
+            case 'none':
+              options += ` -o print-scaling=none`;
+              break;
+            case 'fit':
+              options += ` -o print-scaling=fit`;
+              break;
+            case 'fill':
+              options += ` -o print-scaling=fill`;
+              break;
+          }
+        }
+        
+        // Add media size
+        if (printerSetting.options.media) {
+          options += ` -o media=${printerSetting.options.media}`;
         }
         
         const fullCommand = `${command}${options} "${fullPdfPath}"`;

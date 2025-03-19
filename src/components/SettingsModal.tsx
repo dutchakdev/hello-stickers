@@ -7,6 +7,14 @@ import { Label } from './ui/label';
 import { Settings, Save, Loader2, Trash2, Upload, FileText } from 'lucide-react';
 import { useToast } from './ui/use-toast';
 import TextareaAutosize from 'react-textarea-autosize';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from './ui/select';
+import { Switch } from './ui/switch';
 
 type SettingsProps = {
   defaultOpen?: boolean;
@@ -28,6 +36,19 @@ type GoogleDriveSettings = {
 
 type PrinterSettings = {
   printerName: string;
+  options: {
+    orientation?: 'portrait' | 'landscape';
+    margins?: {
+      top: number;
+      right: number;
+      bottom: number;
+      left: number;
+      units: 'mm' | 'in' | 'pt';
+    };
+    scale?: number;
+    fitToPage?: boolean;
+    printScaling?: 'none' | 'fit' | 'fill';
+  };
 };
 
 export function SettingsModal({ defaultOpen = false, children, onOpenChange }: SettingsProps) {
@@ -51,7 +72,8 @@ export function SettingsModal({ defaultOpen = false, children, onOpenChange }: S
   });
   
   const [printerSettings, setPrinterSettings] = useState<PrinterSettings>({
-    printerName: ''
+    printerName: '',
+    options: {}
   });
 
   // Load settings from database on component mount
@@ -232,6 +254,42 @@ export function SettingsModal({ defaultOpen = false, children, onOpenChange }: S
     setPrinterSettings(prev => ({ ...prev, printerName: e.target.value }));
   };
 
+  const handleOptionChange = (key: keyof PrinterSettings['options'], value: any) => {
+    setPrinterSettings(prev => ({
+      ...prev,
+      options: {
+        ...prev.options,
+        [key]: value
+      }
+    }));
+  };
+
+  const handleMarginChange = (key: keyof PrinterSettings['options']['margins'], value: number) => {
+    setPrinterSettings(prev => ({
+      ...prev,
+      options: {
+        ...prev.options,
+        margins: {
+          ...prev.options?.margins,
+          [key]: value
+        }
+      }
+    }));
+  };
+
+  const handleMarginUnitsChange = (value: 'mm' | 'in' | 'pt') => {
+    setPrinterSettings(prev => ({
+      ...prev,
+      options: {
+        ...prev.options,
+        margins: {
+          ...prev.options?.margins,
+          units: value
+        }
+      }
+    }));
+  };
+
   if (isLoading) {
     return (
       <Dialog defaultOpen={defaultOpen} onOpenChange={onOpenChange}>
@@ -371,23 +429,143 @@ export function SettingsModal({ defaultOpen = false, children, onOpenChange }: S
             </div>
           </TabsContent>
           <TabsContent value="printer" className="space-y-4 pt-4">
-            <div className="space-y-2">
-              <Label htmlFor="printerName">Default Printer</Label>
-              <div className="relative">
-                <select
-                  id="printerName"
-                  value={printerSettings.printerName}
-                  onChange={handlePrinterChange}
-                  className="w-full p-2 border rounded-md bg-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
-                >
-                  <option value="">Select a printer</option>
-                  {availablePrinters.map((printer, index) => (
-                    <option key={index} value={printer}>{printer}</option>
-                  ))}
-                </select>
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="printerName">Default Printer</Label>
+                <div className="relative">
+                  <select
+                    id="printerName"
+                    value={printerSettings.printerName}
+                    onChange={handlePrinterChange}
+                    className="w-full p-2 border rounded-md bg-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+                  >
+                    <option value="">Select a printer</option>
+                    {availablePrinters.map((printer, index) => (
+                      <option key={index} value={printer}>{printer}</option>
+                    ))}
+                  </select>
+                </div>
+                <p className="text-sm text-gray-500">Select the default printer for label printing</p>
               </div>
-              <p className="text-sm text-gray-500">Select the default printer for label printing</p>
+
+              <div className="space-y-2">
+                <Label>Orientation</Label>
+                <Select
+                  value={printerSettings.options?.orientation || 'portrait'}
+                  onValueChange={(value) => handleOptionChange('orientation', value)}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select orientation" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="portrait">Portrait</SelectItem>
+                    <SelectItem value="landscape">Landscape</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Margins</Label>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <Label className="text-sm">Top</Label>
+                    <Input
+                      type="number"
+                      value={printerSettings.options?.margins?.top || 0}
+                      onChange={(e) => handleMarginChange('top', parseFloat(e.target.value))}
+                      min={0}
+                      step={0.1}
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-sm">Right</Label>
+                    <Input
+                      type="number"
+                      value={printerSettings.options?.margins?.right || 0}
+                      onChange={(e) => handleMarginChange('right', parseFloat(e.target.value))}
+                      min={0}
+                      step={0.1}
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-sm">Bottom</Label>
+                    <Input
+                      type="number"
+                      value={printerSettings.options?.margins?.bottom || 0}
+                      onChange={(e) => handleMarginChange('bottom', parseFloat(e.target.value))}
+                      min={0}
+                      step={0.1}
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-sm">Left</Label>
+                    <Input
+                      type="number"
+                      value={printerSettings.options?.margins?.left || 0}
+                      onChange={(e) => handleMarginChange('left', parseFloat(e.target.value))}
+                      min={0}
+                      step={0.1}
+                    />
+                  </div>
+                </div>
+                <Select
+                  value={printerSettings.options?.margins?.units || 'mm'}
+                  onValueChange={(value) => handleMarginUnitsChange(value as 'mm' | 'in' | 'pt')}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select units" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="mm">Millimeters (mm)</SelectItem>
+                    <SelectItem value="in">Inches (in)</SelectItem>
+                    <SelectItem value="pt">Points (pt)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Scale</Label>
+                <div className="flex items-center gap-4">
+                  <Input
+                    type="number"
+                    value={printerSettings.options?.scale || 100}
+                    onChange={(e) => handleOptionChange('scale', parseFloat(e.target.value))}
+                    min={1}
+                    max={200}
+                    className="w-24"
+                  />
+                  <span className="text-sm text-gray-500">%</span>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <Label>Fit to Page</Label>
+                  <Switch
+                    checked={printerSettings.options?.fitToPage || false}
+                    onCheckedChange={(checked) => handleOptionChange('fitToPage', checked)}
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Print Scaling</Label>
+                <Select
+                  value={printerSettings.options?.printScaling || 'none'}
+                  onValueChange={(value) => handleOptionChange('printScaling', value)}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select scaling option" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">None</SelectItem>
+                    <SelectItem value="fit">Fit to Page</SelectItem>
+                    <SelectItem value="fill">Fill Page</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
+
             <div className="flex justify-end">
               <Button 
                 onClick={savePrinterSettings} 

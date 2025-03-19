@@ -3,6 +3,8 @@ import * as path from 'path';
 import { exec } from 'child_process';
 import { app } from 'electron';
 import { promisify } from 'util';
+import { platform } from 'os';
+import { PDFDocument } from 'pdf-lib';
 
 // Promisify exec
 const execPromise = promisify(exec);
@@ -45,45 +47,54 @@ export async function createPdfPreview(pdfPath: string): Promise<string | null> 
       // ImageMagick's magick command (newer versions)
       `magick convert -density 150 "${pdfPath}"[0] -quality 90 "${previewPath}"`,
       // GraphicsMagick alternative
-      `gm convert -density 150 "${pdfPath}"[0] -quality 90 "${previewPath}"`
+      `gm convert -density 150 "${pdfPath}"[0] -quality 90 "${previewPath}"`,
+      // Windows-specific: PowerShell with .NET GhostScript (if available)
+      `powershell -Command "Add-Type -AssemblyName System.Drawing; $img = New-Object System.Drawing.Bitmap('${pdfPath.replace(/\\/g, '\\\\')}'); $img.Save('${previewPath.replace(/\\/g, '\\\\')}', [System.Drawing.Imaging.ImageFormat]::Png); $img.Dispose()"`,
+      // Windows-specific: MuPDF (if installed)
+      `mutool draw -o "${previewPath}" -F png "${pdfPath}" 1`,
+      // Windows-specific: GhostScript (if installed)
+      `gswin64c -sDEVICE=pngalpha -dFirstPage=1 -dLastPage=1 -dNOPAUSE -dBATCH -r150 -dJPEGQ=90 -sOutputFile="${previewPath}" "${pdfPath}"`
     ];
     
     // Try each command until one works
     let success = false;
     for (const command of commands) {
       try {
-        console.log(`Trying command: ${command}`);
+        console.log(`Attempting to convert PDF using command: ${command}`);
         await execPromise(command);
         
-        // Check if file was created
-        if (fs.existsSync(previewPath) && fs.statSync(previewPath).size > 0) {
-          console.log(`Successfully created preview with command: ${command}`);
-          success = true;
-          break;
+        // Check if preview was created
+        if (fs.existsSync(previewPath)) {
+          console.log(`Successfully created preview: ${previewPath}`);
+          return getAppUrl(previewPath);
         }
-      } catch (err) {
-        console.log(`Command failed: ${command}`, err);
-        // Continue to next command
+      } catch (error) {
+        console.warn(`Command failed: ${command}`, error);
       }
     }
     
-    // If all commands failed, create a basic placeholder image
-    if (!success) {
-      console.warn(`All PDF conversion commands failed for: ${pdfPath}, creating a placeholder`);
-      try {
-        // Create a colored rectangle with the PDF filename as text
-        // Here we use a simple base64 encoded PNG as fallback
-        const placeholderData = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAMgAAABkCAYAAADDhn8LAAAACXBIWXMAAAsTAAALEwEAmpwYAAAITWlUWHRYTUw6Y29tLmFkb2JlLnhtcAAAAAAAPD94cGFja2V0IGJlZ2luPSLvu78iIGlkPSJXNU0wTXBDZWhpSHpyZVN6TlRjemtjOWQiPz4gPHg6eG1wbWV0YSB4bWxuczp4PSJhZG9iZTpuczptZXRhLyIgeDp4bXB0az0iQWRvYmUgWE1QIENvcmUgNS42LWMxNDUgNzkuMTYzNDk5LCAyMDE4LzA4LzEzLTE2OjQwOjIyICAgICAgICAiPiA8cmRmOlJERiB4bWxuczpyZGY9Imh0dHA6Ly93d3cudzMub3JnLzE5OTkvMDIvMjItcmRmLXN5bnRheC1ucyMiPiA8cmRmOkRlc2NyaXB0aW9uIHJkZjphYm91dD0iIiB4bWxuczp4bXA9Imh0dHA6Ly9ucy5hZG9iZS5jb20veGFwLzEuMC8iIHhtbG5zOmRjPSJodHRwOi8vcHVybC5vcmcvZGMvZWxlbWVudHMvMS4xLyIgeG1sbnM6cGhvdG9zaG9wPSJodHRwOi8vbnMuYWRvYmUuY29tL3Bob3Rvc2hvcC8xLjAvIiB4bWxuczp4bXBNTT0iaHR0cDovL25zLmFkb2JlLmNvbS94YXAvMS4wL21tLyIgeG1sbnM6c3RFdnQ9Imh0dHA6Ly9ucy5hZG9iZS5jb20veGFwLzEuMC9zVHlwZS9SZXNvdXJjZUV2ZW50IyIgeG1wOkNyZWF0b3JUb29sPSJBZG9iZSBQaG90b3Nob3AgQ0MgMjAxOSAoTWFjaW50b3NoKSIgeG1wOkNyZWF0ZURhdGU9IjIwMjMtMDMtMTlUMTA6MDA6MzgrMDI6MDAiIHhtcDpNb2RpZnlEYXRlPSIyMDIzLTAzLTE5VDEwOjAxOjA3KzAyOjAwIiB4bXA6TWV0YWRhdGFEYXRlPSIyMDIzLTAzLTE5VDEwOjAxOjA3KzAyOjAwIiBkYzpmb3JtYXQ9ImltYWdlL3BuZyIgcGhvdG9zaG9wOkNvbG9yTW9kZT0iMyIgcGhvdG9zaG9wOklDQ1Byb2ZpbGU9InNSR0IgSUVDNjE5NjYtMi4xIiB4bXBNTTpJbnN0YW5jZUlEPSJ4bXAuaWlkOmZkYjQxYzAzLTI0MWUtNDA5Ny1iMTk4LTMwYTJlZmU5NmIyYyIgeG1wTU06RG9jdW1lbnRJRD0ieG1wLmRpZDpmZGI0MWMwMy0yNDFlLTQwOTctYjE5OC0zMGEyZWZlOTZiMmMiIHhtcE1NOk9yaWdpbmFsRG9jdW1lbnRJRD0ieG1wLmRpZDpmZGI0MWMwMy0yNDFlLTQwOTctYjE5OC0zMGEyZWZlOTZiMmMiPiA8eG1wTU06SGlzdG9yeT4gPHJkZjpTZXE+IDxyZGY6bGkgc3RFdnQ6YWN0aW9uPSJjcmVhdGVkIiBzdEV2dDppbnN0YW5jZUlEPSJ4bXAuaWlkOmZkYjQxYzAzLTI0MWUtNDA5Ny1iMTk4LTMwYTJlZmU5NmIyYyIgc3RFdnQ6d2hlbj0iMjAyMy0wMy0xOVQxMDowMDozOCswMjowMCIgc3RFdnQ6c29mdHdhcmVBZ2VudD0iQWRvYmUgUGhvdG9zaG9wIENDIDIwMTkgKE1hY2ludG9zaCkiLz4gPC9yZGY6U2VxPiA8L3htcE1NOkhpc3Rvcnk+IDwvcmRmOkRlc2NyaXB0aW9uPiA8L3JkZjpSREY+IDwveDp4bXBtZXRhPiA8P3hwYWNrZXQgZW5kPSJyIj8+Ug7nrwAAA6JJREFUeNrt3LFqFEEYwPH/7BouEi0iRMFOQbCwshUFLazEQvACPoGFYC0+gJV9qlhY+A62KQViI0iChYTkNnc7szOzM2ckm0vFhMv8fjBcsjue/eDs3d3s3SwYY0yk+PoCiIgBEREB8fP0Ybc2H3fO9n8K5z6dj4j1/yzePTvbGrv24B7Q7DmOGrj+a7K/HmUBXOrdp2PYmV85uAn8uqB7vwccAyeCTBCQHADJDZDcAMkNkNwAyQ2Q3AAQ3fEORAjIAJIGJA1IGpA0IGlA0oCkAUkDkgYkDQDRHe9AhIB0APJuZ3+twdNxs/u2qf+Xy0/mVw6eNVhE6z5+3a/I99u8OdN+Zc7VWssvl8slM6NlFkJYRshShMcIWY2IqyHEtRDiegi7V0JY7n2OJe/M9j2DxG4KTc/vt6F2JeRbhnlnhzqFENYzrK8Zm+tZ3pllbKwXrK9lrK1mbKwWbKwVrK0UPV+e+j41qSCjQXb91dnfJe4vx7MfIVJ3mOLcbxz93+RrfYkZBaMIRZZRZqELSZZRliFbgpCFLigLMy0uY2t1j63r+2ytHWBzNWdrfZ+t1YLN1cJ7Uj+DJDsefXlRl6GImQikTnlTM0gWqpbkWcZylrE0FZIsM8qQU5SRUkRKlZlj1VRg3VTU50xCqSb5/lKklCnKSFVGqjPKlFiaCvHyzmNer8yz82yZd8/OORxPQCZzF6sqIpSh7Q9FGbqzRjVV5KHtL1PFdFYJ47NGaPtNSRkopcwpp/tSJZbKRFll1E1iuUqsHFfXnzxkfn5OQM65xHdvcZlQhYyDuuSwrhg0iXGd2B8nDurD94NxxeFhzV5d0dSJuk5M6kRqEmkqPzPvWEWCkOH97ikhz6maRN0khs30gW2axPA4MVGJ+X6QP89iJZqaJgzZ3XvEi8+vGBxVbI8Tt+vEnaZNlTpxq07cbhrWR4md44adw8Td44Y7o5rvw8TmXf9PZgnIBL7F6p4J3H23yqAbCjOMRx3KuKtPjB6w0X9hM/UYHt4nSvdpTM0mQ/a/3fOfmTWD3OOvpWcV/k18IRl0g3/fGPXf8PcfS9MzQlnmjA+/8/HDG95s7/Li2Q0BmWEGaT+AcdahTL15lOlN49Tjo71vPLnv/YggM/sdpOtFJYfTRf1HIOvk/7GPAZGAOA/GAEhABEQCIgERAAnILOk3Q1B8R9NmTYcAAAAASUVORK5CYII=', 'base64');
-        fs.writeFileSync(previewPath, placeholderData);
-        console.log(`Created placeholder image at ${previewPath}`);
-      } catch (err) {
-        console.error(`Failed to create placeholder: ${err.message}`);
-        return null;
+    // If all commands fail, create a simple placeholder preview
+    // This is a fallback for when no conversion tools are available
+    try {
+      console.log('Creating placeholder preview image');
+      // Create a basic placeholder image with PDF filename
+      const placeholderPath = path.join(__dirname, '../../assets/pdf-placeholder.png');
+      
+      if (fs.existsSync(placeholderPath)) {
+        // Copy the placeholder to the preview path
+        fs.copyFileSync(placeholderPath, previewPath);
+        console.log('Created placeholder preview from template');
+        return getAppUrl(previewPath);
+      } else {
+        // If placeholder not found, log error
+        console.error('Placeholder image not found:', placeholderPath);
       }
+    } catch (error) {
+      console.error('Failed to create placeholder preview:', error);
     }
     
-    // Return the app URL
-    return getAppUrl(previewPath);
+    console.error('All PDF conversion methods failed');
+    return null;
   } catch (error) {
     console.error('Error generating PDF preview:', error);
     return null;

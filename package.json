@@ -94,13 +94,18 @@
         {
           "name": "@electron-forge/maker-squirrel",
           "config": {
-            "name": "print2"
+            "name": "print2",
+            "authors": "dutchakdev",
+            "description": "Label printing application",
+            "setupIcon": "./assets/icon.ico",
+            "loadingGif": "./assets/installer.gif"
           }
         },
         {
           "name": "@electron-forge/maker-zip",
           "platforms": [
-            "darwin"
+            "darwin",
+            "win32"
           ]
         },
         {

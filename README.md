@@ -38,6 +38,19 @@ npm install
 npm start
 ```
 
+### Windows-Specific Setup
+
+For Windows users, the application requires some additional configuration:
+
+1. **Ensure Print Permissions**: Make sure your Windows user account has permissions to access printers.
+
+2. **Enable PowerShell Script Execution**: The app uses PowerShell for printing. You may need to set the execution policy:
+   ```powershell
+   Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
+   ```
+
+3. **Firewall Configuration**: If Windows Firewall prompts about network access when first running the app, allow the necessary permissions.
+
 ### Configuration
 
 1. **Notion Setup**
@@ -61,6 +74,21 @@ The application uses a two-process architecture:
 - **Main Process**: Handles system operations (database, files, printing)
 - **Renderer Process**: Manages the user interface
 - **IPC Bridge**: Enables secure communication between processes
+
+### Cross-Platform Support
+
+Print2 is designed to work seamlessly across platforms:
+
+#### macOS
+- Uses native CUPS printing interface via `lp` command
+- PDF preview generation with macOS built-in tools
+- Optimized file paths for macOS standards
+
+#### Windows
+- PDF printing via PowerShell and Windows printing subsystem
+- PDF preview generation with multiple fallback methods
+- Windows-specific file path handling
+- Native printer discovery using Windows Management Instrumentation (WMI)
 
 ### Key Components
 

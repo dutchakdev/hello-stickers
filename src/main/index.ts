@@ -124,6 +124,7 @@ ipcMain.handle('print-pdf', async (event, { filePath, printerName, copies = 1, o
   return new Promise((resolve, reject) => {
     try {
       let command = '';
+      let tempScriptPath = ''; // For Windows temporary script
       
       if (platform() === 'darwin') {
         // macOS printing using lp
@@ -148,9 +149,48 @@ ipcMain.handle('print-pdf', async (event, { filePath, printerName, copies = 1, o
         
         command += ` "${filePath}"`;
       } else if (platform() === 'win32') {
-        // Windows printing using SumatraPDF (needs to be installed)
-        // This is a simplified example - you may need to adjust based on your Windows setup
-        command = `SumatraPDF.exe -print-to "${printerName}" -print-settings "copies=${copies}" "${filePath}"`;
+        // Windows printing using native system commands
+        // Create a temporary PowerShell script to handle the printing
+        tempScriptPath = path.join(app.getPath('temp'), 'print-script.ps1');
+        
+        // Build PowerShell script content
+        let scriptContent = `
+$printer = "${printerName}"
+$file = "${filePath.replace(/\\/g, '\\\\')}"
+$copies = ${copies}
+
+# Load the file as a PrintDocument
+Add-Type -AssemblyName System.Drawing
+Add-Type -AssemblyName System.Windows.Forms
+$printDoc = New-Object System.Drawing.Printing.PrintDocument
+$printDoc.PrinterSettings.PrinterName = $printer
+$printDoc.PrinterSettings.Copies = $copies
+
+# Create event handler for printing
+$printDoc.add_PrintPage({
+    param($sender, $eventArgs)
+    
+    # For PDF files, use Windows shell to print
+    Start-Process -FilePath "$file" -Verb Print -PassThru | %{
+        # Wait for process to complete or timeout
+        $completed = $_.WaitForExit(30000) 
+        if (-not $completed) {
+            $_.Kill()
+        }
+    }
+    
+    # Tell the document we're done printing
+    $eventArgs.HasMorePages = $false
+})
+
+$printDoc.Print()
+`;
+        
+        // Write script to temp file
+        fs.writeFileSync(tempScriptPath, scriptContent);
+        
+        // Execute PowerShell script
+        command = `powershell -ExecutionPolicy Bypass -File "${tempScriptPath}"`;
       } else {
         reject(new Error('Unsupported platform'));
         return;
@@ -158,14 +198,24 @@ ipcMain.handle('print-pdf', async (event, { filePath, printerName, copies = 1, o
       
       exec(command, (error, stdout, stderr) => {
         if (error) {
-          console.error(`Print error: ${error.message}`);
+          console.error('Error printing:', error);
           reject(error);
           return;
         }
-        if (stderr) {
-          console.error(`Print stderr: ${stderr}`);
+        
+        // Clean up temporary script file on Windows
+        if (platform() === 'win32' && tempScriptPath) {
+          try {
+            fs.unlinkSync(tempScriptPath);
+          } catch (err) {
+            console.warn('Failed to clean up temporary script:', err);
+          }
         }
-        resolve({ success: true, stdout });
+        
+        console.log('Print job sent to printer');
+        console.log('stdout:', stdout);
+        console.log('stderr:', stderr);
+        resolve({ success: true, message: 'Print job sent to printer' });
       });
     } catch (error) {
       reject(error);

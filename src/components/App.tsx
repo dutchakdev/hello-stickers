@@ -5,6 +5,7 @@ import StickerCard from './StickerCard';
 import SearchBar from './SearchBar';
 import { Skeleton } from './ui/skeleton';
 import { Loader } from './ui/loader';
+import ProductDetailsDrawer from './ProductDetailsDrawer';
 
 const App: React.FC = () => {
   const [currentPage, setCurrentPage] = useState<'products' | 'settings'>('products');
@@ -41,6 +42,7 @@ const App: React.FC = () => {
   const [newPrinterSize, setNewPrinterSize] = useState('');
   const [newPrinterName, setNewPrinterName] = useState('');
   const [isLoadingProductDetails, setIsLoadingProductDetails] = useState(false);
+  const [isProductDetailsOpen, setIsProductDetailsOpen] = useState(false);
 
   // Load products on mount
   useEffect(() => {
@@ -165,6 +167,7 @@ const App: React.FC = () => {
   const handleProductSelect = (product: Product) => {
     setIsLoadingProductDetails(true);
     setSelectedProduct(product);
+    setIsProductDetailsOpen(true);
     setTimeout(() => {
       setIsLoadingProductDetails(false);
     }, 300);
@@ -389,63 +392,13 @@ const App: React.FC = () => {
         )}
       </div>
       
+      {/* Product Details Drawer */}
       {selectedProduct && (
-        <div className="mt-8 p-6 bg-white rounded-lg border shadow-sm">
-          <h2 className="text-xl font-bold mb-2">Product Details</h2>
-          
-          {isLoadingProductDetails ? (
-            <div className="space-y-2">
-              <Skeleton className="h-6 w-3/4" />
-              <Skeleton className="h-4 w-1/2" />
-              <Skeleton className="h-4 w-1/3" />
-            </div>
-          ) : (
-            <div className="mb-6">
-              <h3 className="text-lg font-semibold">{selectedProduct.name}</h3>
-              <div className="grid grid-cols-2 gap-2 mt-2 text-sm">
-                <div>
-                  <span className="font-medium">SKU:</span> {selectedProduct.sku}
-                </div>
-                <div>
-                  <span className="font-medium">Type:</span> {selectedProduct.type}
-                </div>
-                {selectedProduct.barcode && (
-                  <div>
-                    <span className="font-medium">Barcode:</span> {selectedProduct.barcode}
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-          
-          <div className="border-t pt-4 mt-4">
-            <h3 className="text-lg font-semibold mb-4">Stickers</h3>
-            
-            {isLoadingStickers ? (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {Array(2).fill(0).map((_, index) => (
-                  <div key={index} className="border rounded-lg p-4 shadow-sm">
-                    <Skeleton className="h-40 w-full mb-4" />
-                    <Skeleton className="h-6 w-3/4 mb-2" />
-                    <Skeleton className="h-4 w-1/2" />
-                  </div>
-                ))}
-              </div>
-            ) : stickers.length > 0 ? (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {stickers.map(sticker => (
-                  <StickerCard 
-                    key={sticker.id} 
-                    sticker={sticker} 
-                    onPrint={() => handlePrint(sticker)}
-                  />
-                ))}
-              </div>
-            ) : (
-              <p className="text-gray-500 py-4 text-center">No stickers available for this product.</p>
-            )}
-          </div>
-        </div>
+        <ProductDetailsDrawer
+          product={selectedProduct}
+          isOpen={isProductDetailsOpen}
+          onOpenChange={setIsProductDetailsOpen}
+        />
       )}
     </div>
   );

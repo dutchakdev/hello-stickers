@@ -76,3 +76,30 @@ For issues and feature requests, please use the GitHub issue tracker.
 ## License
 
 MIT License - see LICENSE file for details 
+
+## Deployment and Releases
+
+This project uses GitHub Actions to automate building and releasing the application for both macOS and Windows.
+
+### Creating a New Release
+
+1. Tag your commit with a version number:
+   ```bash
+   git tag v1.0.1
+   git push origin v1.0.1
+   ```
+
+2. The GitHub Actions workflow will automatically:
+   - Build the application for macOS and Windows
+   - Package the builds into installers
+   - Create a draft GitHub release with all artifacts
+
+3. Review the draft release on GitHub, add release notes, and publish it.
+
+### Manual Builds
+
+You can also trigger builds manually by:
+1. Going to the GitHub repository
+2. Clicking on the "Actions" tab
+3. Selecting the "Build and Release" workflow
+4. Clicking "Run workflow" 

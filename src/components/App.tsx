@@ -3,6 +3,8 @@ import { Product, Sticker } from '../database/db';
 import ProductCard from './ProductCard';
 import StickerCard from './StickerCard';
 import SearchBar from './SearchBar';
+import { Skeleton } from './ui/skeleton';
+import { Loader } from './ui/loader';
 
 const App: React.FC = () => {
   const [currentPage, setCurrentPage] = useState<'products' | 'settings'>('products');
@@ -13,6 +15,10 @@ const App: React.FC = () => {
   const [productTypes, setProductTypes] = useState<string[]>([]);
   const [selectedType, setSelectedType] = useState<string>('all');
   const [isLoading, setIsLoading] = useState(true);
+  const [isLoadingStickers, setIsLoadingStickers] = useState(false);
+  const [isSavingNotionSettings, setIsSavingNotionSettings] = useState(false);
+  const [isSavingGoogleSettings, setIsSavingGoogleSettings] = useState(false);
+  const [isSavingPrinterSettings, setIsSavingPrinterSettings] = useState(false);
   const [notionSettings, setNotionSettings] = useState<{
     apiKey: string;
     databaseId: string;
@@ -34,6 +40,7 @@ const App: React.FC = () => {
   const [availablePrinters, setAvailablePrinters] = useState<string[]>([]);
   const [newPrinterSize, setNewPrinterSize] = useState('');
   const [newPrinterName, setNewPrinterName] = useState('');
+  const [isLoadingProductDetails, setIsLoadingProductDetails] = useState(false);
 
   // Load products on mount
   useEffect(() => {
@@ -67,10 +74,13 @@ const App: React.FC = () => {
       if (!selectedProduct) return;
       
       try {
+        setIsLoadingStickers(true);
         const stickersData = await window.electron.ipcRenderer.invoke('db-get-stickers', selectedProduct.id);
         setStickers(stickersData);
       } catch (error) {
         console.error('Error loading stickers:', error);
+      } finally {
+        setIsLoadingStickers(false);
       }
     };
     
@@ -143,8 +153,21 @@ const App: React.FC = () => {
     setFilteredProducts(filtered);
   };
 
+  const handleFilterByType = (type: string) => {
+    setSelectedType(type);
+    if (type === 'all') {
+      setFilteredProducts(products);
+    } else {
+      setFilteredProducts(products.filter(p => p.type === type));
+    }
+  };
+
   const handleProductSelect = (product: Product) => {
+    setIsLoadingProductDetails(true);
     setSelectedProduct(product);
+    setTimeout(() => {
+      setIsLoadingProductDetails(false);
+    }, 300);
   };
 
   const handleRefresh = async () => {
@@ -213,6 +236,7 @@ const App: React.FC = () => {
 
   const handleSaveNotionSettings = async () => {
     try {
+      setIsSavingNotionSettings(true);
       console.log('Saving Notion settings:', notionSettings);
       const updatedSettings = await window.electron.ipcRenderer.invoke('db-save-notion-settings', notionSettings);
       setNotionSettings(updatedSettings);
@@ -220,17 +244,21 @@ const App: React.FC = () => {
     } catch (error) {
       console.error('Error saving Notion settings:', error);
       alert('Failed to save Notion settings');
+    } finally {
+      setIsSavingNotionSettings(false);
     }
   };
 
   const handleSaveGoogleDriveSettings = async () => {
     try {
+      setIsSavingGoogleSettings(true);
       console.log('Saving Google Drive settings:', googleDriveSettings);
       // Validate JSON format
       try {
         JSON.parse(googleDriveSettings.serviceAccountJson);
       } catch (e) {
         alert('Invalid JSON format. Please check the service account file.');
+        setIsSavingGoogleSettings(false);
         return;
       }
       
@@ -240,11 +268,14 @@ const App: React.FC = () => {
     } catch (error) {
       console.error('Error saving Google Drive settings:', error);
       alert('Failed to save Google Drive settings');
+    } finally {
+      setIsSavingGoogleSettings(false);
     }
   };
 
   const handleAddPrinterSetting = async () => {
     try {
+      setIsSavingPrinterSettings(true);
       if (!newPrinterSize || !newPrinterName) {
         alert('Please enter both size and printer name');
         return;
@@ -269,6 +300,8 @@ const App: React.FC = () => {
     } catch (error) {
       console.error('Error adding printer setting:', error);
       alert('Failed to add printer setting');
+    } finally {
+      setIsSavingPrinterSettings(false);
     }
   };
 
@@ -288,65 +321,128 @@ const App: React.FC = () => {
   };
 
   const renderProductsPage = () => (
-    <div className="products-page">
-      <div className="products-header">
-        <h2>Products</h2>
-        <button className="sync-button" onClick={handleRefresh}>
-          {isLoading ? 'Syncing...' : 'Sync'}
-        </button>
+    <div className="p-4">
+      <div className="flex justify-between items-center mb-4">
+        <h1 className="text-2xl font-bold">Products</h1>
+        <div className="flex space-x-2">
+          <button 
+            onClick={handleRefresh} 
+            className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 flex items-center"
+            disabled={isLoading}
+          >
+            {isLoading ? (
+              <>
+                <Loader size="sm" className="mr-2" /> Syncing...
+              </>
+            ) : (
+              'Sync from Notion'
+            )}
+          </button>
+          <button 
+            onClick={() => setCurrentPage('settings')} 
+            className="px-4 py-2 bg-gray-500 text-white rounded hover:bg-gray-600"
+          >
+            Settings
+          </button>
+        </div>
       </div>
       
       <SearchBar onSearch={handleSearch} />
       
-      <div className="filter-buttons">
-        <button 
-          className={selectedType === 'all' ? 'active' : ''} 
-          onClick={() => setSelectedType('all')}
+      <div className="mb-4">
+        <select 
+          value={selectedType} 
+          onChange={(e) => handleFilterByType(e.target.value)}
+          className="p-2 border rounded"
         >
-          All
-        </button>
-        {productTypes.map(type => (
-          <button 
-            key={type} 
-            className={selectedType === type ? 'active' : ''}
-            onClick={() => setSelectedType(type)}
-          >
-            {type}
-          </button>
-        ))}
+          <option value="all">All Types</option>
+          {productTypes.map(type => (
+            <option key={type} value={type}>{type}</option>
+          ))}
+        </select>
       </div>
       
-      <div className="products-container">
-        {filteredProducts.length === 0 ? (
-          <p className="no-products">No products found</p>
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+        {isLoading ? (
+          // Loading skeleton cards
+          Array(8).fill(0).map((_, index) => (
+            <div key={index} className="border rounded-lg p-4 shadow-sm">
+              <Skeleton className="h-40 w-full mb-4" />
+              <Skeleton className="h-6 w-3/4 mb-2" />
+              <Skeleton className="h-4 w-1/2 mb-2" />
+              <Skeleton className="h-4 w-2/3" />
+            </div>
+          ))
+        ) : filteredProducts.length > 0 ? (
+          filteredProducts.map(product => (
+            <ProductCard
+              key={product.id}
+              product={product}
+              isSelected={selectedProduct?.id === product.id}
+              onClick={() => handleProductSelect(product)}
+            />
+          ))
         ) : (
-          <div className="products-grid">
-            {filteredProducts.map(product => (
-              <ProductCard 
-                key={product.id} 
-                product={product} 
-                onSelect={() => handleProductSelect(product)}
-                isSelected={selectedProduct?.id === product.id}
-              />
-            ))}
+          <div className="col-span-full text-center py-8 text-gray-500">
+            No products found.
           </div>
         )}
       </div>
       
       {selectedProduct && (
-        <div className="stickers-panel">
-          <h3>Stickers for {selectedProduct.name}</h3>
-          <div className="stickers-grid">
-            {stickers.length === 0 ? (
-              <p>No stickers available for this product</p>
+        <div className="mt-8 p-6 bg-white rounded-lg border shadow-sm">
+          <h2 className="text-xl font-bold mb-2">Product Details</h2>
+          
+          {isLoadingProductDetails ? (
+            <div className="space-y-2">
+              <Skeleton className="h-6 w-3/4" />
+              <Skeleton className="h-4 w-1/2" />
+              <Skeleton className="h-4 w-1/3" />
+            </div>
+          ) : (
+            <div className="mb-6">
+              <h3 className="text-lg font-semibold">{selectedProduct.name}</h3>
+              <div className="grid grid-cols-2 gap-2 mt-2 text-sm">
+                <div>
+                  <span className="font-medium">SKU:</span> {selectedProduct.sku}
+                </div>
+                <div>
+                  <span className="font-medium">Type:</span> {selectedProduct.type}
+                </div>
+                {selectedProduct.barcode && (
+                  <div>
+                    <span className="font-medium">Barcode:</span> {selectedProduct.barcode}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+          
+          <div className="border-t pt-4 mt-4">
+            <h3 className="text-lg font-semibold mb-4">Stickers</h3>
+            
+            {isLoadingStickers ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {Array(2).fill(0).map((_, index) => (
+                  <div key={index} className="border rounded-lg p-4 shadow-sm">
+                    <Skeleton className="h-40 w-full mb-4" />
+                    <Skeleton className="h-6 w-3/4 mb-2" />
+                    <Skeleton className="h-4 w-1/2" />
+                  </div>
+                ))}
+              </div>
+            ) : stickers.length > 0 ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {stickers.map(sticker => (
+                  <StickerCard 
+                    key={sticker.id} 
+                    sticker={sticker} 
+                    onPrint={() => handlePrint(sticker)}
+                  />
+                ))}
+              </div>
             ) : (
-              stickers.map(sticker => (
-                <StickerCard 
-                  key={sticker.id} 
-                  sticker={sticker} 
-                  onPrint={() => handlePrint(sticker)}
-                />
-              ))
+              <p className="text-gray-500 py-4 text-center">No stickers available for this product.</p>
             )}
           </div>
         </div>
@@ -355,81 +451,159 @@ const App: React.FC = () => {
   );
 
   const renderSettingsPage = () => (
-    <div className="settings-page">
-      <h2>Settings</h2>
-      
-      <div className="settings-section">
-        <h3>Notion</h3>
-        <div className="setting-field">
-          <label>API Key</label>
-          <input 
-            type="password" 
-            value={notionSettings.apiKey || ''} 
-            onChange={(e) => setNotionSettings({...notionSettings, apiKey: e.target.value})}
-          />
-        </div>
-        <div className="setting-field">
-          <label>Database ID</label>
-          <input 
-            type="text" 
-            value={notionSettings.databaseId || ''} 
-            onChange={(e) => setNotionSettings({...notionSettings, databaseId: e.target.value})}
-          />
-        </div>
-        <button onClick={handleSaveNotionSettings}>Save</button>
-        <p className="last-synced">
-          Last synced: {notionSettings.lastSyncedAt ? new Date(notionSettings.lastSyncedAt).toLocaleString() : 'Never'}
-        </p>
+    <div className="p-4">
+      <div className="flex justify-between items-center mb-6">
+        <h1 className="text-2xl font-bold">Settings</h1>
+        <button 
+          onClick={() => setCurrentPage('products')} 
+          className="px-4 py-2 bg-gray-500 text-white rounded hover:bg-gray-600"
+        >
+          Back to Products
+        </button>
       </div>
       
-      <div className="settings-section">
-        <h3>Google Drive</h3>
-        <div className="setting-field">
-          <label>Сервісний акаунт JSON</label>
-          <textarea
-            value={googleDriveSettings.serviceAccountJson || ''}
-            onChange={(e) => setGoogleDriveSettings({...googleDriveSettings, serviceAccountJson: e.target.value})}
-            placeholder="Вставте JSON файл сервісного акаунта Google тут..."
-            rows={10}
-            className="service-account-json"
-          />
+      <div className="space-y-8">
+        {/* Notion Settings */}
+        <div className="bg-card rounded-lg border shadow-sm p-6">
+          <h2 className="text-xl font-semibold mb-4">Notion Integration</h2>
+          
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium mb-1">API Key</label>
+              <input 
+                type="password" 
+                value={notionSettings.apiKey || ''} 
+                onChange={(e) => setNotionSettings({...notionSettings, apiKey: e.target.value})}
+                className="w-full p-2 rounded border focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              />
+            </div>
+            
+            <div>
+              <label className="block text-sm font-medium mb-1">Database ID</label>
+              <input 
+                type="text" 
+                value={notionSettings.databaseId || ''} 
+                onChange={(e) => setNotionSettings({...notionSettings, databaseId: e.target.value})}
+                className="w-full p-2 rounded border focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              />
+            </div>
+            
+            <div>
+              <button 
+                onClick={handleSaveNotionSettings}
+                disabled={isSavingNotionSettings}
+                className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 flex items-center"
+              >
+                {isSavingNotionSettings ? (
+                  <>
+                    <Loader size="sm" className="mr-2" /> Saving...
+                  </>
+                ) : (
+                  'Save Notion Settings'
+                )}
+              </button>
+              
+              <p className="text-sm text-muted-foreground mt-2">
+                Last synced: {notionSettings.lastSyncedAt ? new Date(notionSettings.lastSyncedAt).toLocaleString() : 'Never'}
+              </p>
+            </div>
+          </div>
         </div>
-        <button onClick={handleSaveGoogleDriveSettings}>Зберегти</button>
-      </div>
-      
-      <div className="settings-section">
-        <h3>Printer</h3>
-        <div className="setting-field">
-          <label>Printer Name</label>
-          <select 
-            value={printerSettings.printerName || ''} 
-            onChange={(e) => setPrinterSettings({...printerSettings, printerName: e.target.value})}
-          >
-            <option value="">Select a printer</option>
-            {availablePrinters.map(printer => (
-              <option key={printer} value={printer}>{printer}</option>
-            ))}
-          </select>
+        
+        {/* Google Drive Settings */}
+        <div className="bg-card rounded-lg border shadow-sm p-6">
+          <h2 className="text-xl font-semibold mb-4">Google Drive Integration</h2>
+          
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium mb-1">Service Account JSON</label>
+              <textarea
+                value={googleDriveSettings.serviceAccountJson || ''}
+                onChange={(e) => setGoogleDriveSettings({...googleDriveSettings, serviceAccountJson: e.target.value})}
+                placeholder="Paste your Google service account JSON here..."
+                rows={6}
+                className="w-full p-2 rounded border font-mono text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              />
+            </div>
+            
+            <div>
+              <button 
+                onClick={handleSaveGoogleDriveSettings}
+                disabled={isSavingGoogleSettings}
+                className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 flex items-center"
+              >
+                {isSavingGoogleSettings ? (
+                  <>
+                    <Loader size="sm" className="mr-2" /> Saving...
+                  </>
+                ) : (
+                  'Save Google Drive Settings'
+                )}
+              </button>
+            </div>
+          </div>
         </div>
-        <button onClick={handleAddPrinterSetting}>Add Printer Setting</button>
-        <button onClick={handleDeletePrinterSetting}>Delete Printer Setting</button>
+        
+        {/* Printer Settings */}
+        <div className="bg-card rounded-lg border shadow-sm p-6">
+          <h2 className="text-xl font-semibold mb-4">Printer Configuration</h2>
+          
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium mb-1">Printer Name</label>
+              <select 
+                value={printerSettings.printerName || ''} 
+                onChange={(e) => setPrinterSettings({...printerSettings, printerName: e.target.value})}
+                className="w-full p-2 rounded border focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              >
+                <option value="">Select a printer</option>
+                {availablePrinters.map(printer => (
+                  <option key={printer} value={printer}>{printer}</option>
+                ))}
+              </select>
+            </div>
+            
+            <div className="flex space-x-4">
+              <button 
+                onClick={handleAddPrinterSetting}
+                disabled={isSavingPrinterSettings}
+                className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 flex items-center"
+              >
+                {isSavingPrinterSettings ? (
+                  <>
+                    <Loader size="sm" className="mr-2" /> Saving...
+                  </>
+                ) : (
+                  'Save Printer Settings'
+                )}
+              </button>
+              
+              <button 
+                onClick={handleDeletePrinterSetting}
+                className="px-4 py-2 bg-red-500 text-white rounded hover:bg-red-600"
+              >
+                Delete Printer Setting
+              </button>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   );
 
   return (
-    <div className="app">
-      <header className="header">
-        <h1>Label Printer</h1>
-        <nav>
+    <div className="flex flex-col h-screen bg-gray-50">
+      <header className="bg-white border-b px-6 py-4 flex justify-between items-center">
+        <h1 className="text-2xl font-bold">Label Printer</h1>
+        <nav className="flex space-x-2">
           <button 
-            className={currentPage === 'products' ? 'active' : ''} 
+            className={`px-4 py-2 rounded ${currentPage === 'products' ? 'bg-blue-500 text-white' : 'bg-gray-200 hover:bg-gray-300'}`}
             onClick={() => setCurrentPage('products')}
           >
             Products
           </button>
           <button 
-            className={currentPage === 'settings' ? 'active' : ''} 
+            className={`px-4 py-2 rounded ${currentPage === 'settings' ? 'bg-blue-500 text-white' : 'bg-gray-200 hover:bg-gray-300'}`}
             onClick={() => setCurrentPage('settings')}
           >
             Settings
@@ -437,184 +611,10 @@ const App: React.FC = () => {
         </nav>
       </header>
 
-      <main className="content">
+      <main className="flex-1 overflow-auto">
         {currentPage === 'products' && renderProductsPage()}
-        
         {currentPage === 'settings' && renderSettingsPage()}
       </main>
-      
-      <style dangerouslySetInnerHTML={{ __html: `
-        .app {
-          display: flex;
-          flex-direction: column;
-          height: 100vh;
-          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
-        }
-        
-        .header {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          padding: 1rem;
-          background-color: #f5f5f7;
-          border-bottom: 1px solid #e0e0e0;
-        }
-        
-        .header h1 {
-          margin: 0;
-          font-size: 1.5rem;
-        }
-        
-        .header nav {
-          display: flex;
-        }
-        
-        .header nav button {
-          padding: 0.5rem 1rem;
-          margin-left: 0.5rem;
-          background: none;
-          border: none;
-          border-radius: 4px;
-          cursor: pointer;
-        }
-        
-        .header nav button.active {
-          background-color: #007aff;
-          color: white;
-        }
-        
-        .content {
-          flex: 1;
-          padding: 1rem;
-          overflow-y: auto;
-        }
-        
-        .products-header {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          margin-bottom: 1rem;
-        }
-        
-        .sync-button {
-          padding: 0.5rem 1rem;
-          background-color: #007aff;
-          color: white;
-          border: none;
-          border-radius: 4px;
-          cursor: pointer;
-        }
-        
-        .filter-buttons {
-          display: flex;
-          margin-bottom: 1rem;
-          overflow-x: auto;
-          padding-bottom: 0.5rem;
-        }
-        
-        .filter-buttons button {
-          padding: 0.5rem 1rem;
-          margin-right: 0.5rem;
-          background: none;
-          border: 1px solid #e0e0e0;
-          border-radius: 4px;
-          cursor: pointer;
-          white-space: nowrap;
-        }
-        
-        .filter-buttons button.active {
-          background-color: #007aff;
-          color: white;
-          border-color: #007aff;
-        }
-        
-        .products-container {
-          margin-bottom: 1rem;
-          max-height: 50vh;
-          overflow-y: auto;
-        }
-        
-        .products-grid {
-          display: grid;
-          grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-          gap: 1rem;
-        }
-        
-        .no-products {
-          text-align: center;
-          padding: 2rem;
-          color: #888;
-        }
-        
-        .stickers-panel {
-          border-top: 1px solid #e0e0e0;
-          padding-top: 1rem;
-          max-height: 30vh;
-          overflow-y: auto;
-        }
-        
-        .stickers-grid {
-          display: grid;
-          grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-          gap: 1rem;
-        }
-        
-        .settings-page h2 {
-          margin-bottom: 1.5rem;
-        }
-        
-        .settings-section {
-          margin-bottom: 2rem;
-          padding: 1rem;
-          border: 1px solid #e0e0e0;
-          border-radius: 4px;
-        }
-        
-        .settings-section h3 {
-          margin-top: 0;
-          margin-bottom: 1rem;
-        }
-        
-        .setting-field {
-          margin-bottom: 1rem;
-        }
-        
-        .setting-field label {
-          display: block;
-          margin-bottom: 0.5rem;
-          font-weight: 500;
-        }
-        
-        .setting-field input,
-        .setting-field select {
-          width: 100%;
-          padding: 0.5rem;
-          border: 1px solid #e0e0e0;
-          border-radius: 4px;
-        }
-        
-        .settings-section button {
-          padding: 0.5rem 1rem;
-          background-color: #007aff;
-          color: white;
-          border: none;
-          border-radius: 4px;
-          cursor: pointer;
-        }
-        
-        .last-synced {
-          margin-top: 0.5rem;
-          font-size: 0.8rem;
-          color: #888;
-        }
-        
-        .service-account-json {
-          font-family: monospace;
-          font-size: 0.8rem;
-          white-space: pre;
-          overflow-x: auto;
-        }
-      ` }} />
     </div>
   );
 };

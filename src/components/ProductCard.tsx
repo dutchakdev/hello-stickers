@@ -5,10 +5,10 @@ import './ProductCard.css';
 interface ProductCardProps {
   product: Product;
   isSelected: boolean;
-  onSelect: (product: Product) => void;
+  onClick: () => void;
 }
 
-const ProductCard: React.FC<ProductCardProps> = ({ product, isSelected, onSelect }) => {
+const ProductCard: React.FC<ProductCardProps> = ({ product, isSelected, onClick }) => {
   const [imageError, setImageError] = useState(false);
 
   // Отримуємо URL зображення через допоміжну функцію
@@ -20,7 +20,7 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, isSelected, onSelect
   return (
     <div 
       className={`product-card ${isSelected ? 'selected' : ''}`}
-      onClick={() => onSelect(product)}
+      onClick={onClick}
     >
       <div className="product-image">
         {imageUrl && !imageError ? (

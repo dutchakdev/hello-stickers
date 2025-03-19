@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Sticker } from '../database/db';
+import { Loader } from './ui/loader';
 
 export interface StickerCardProps {
   sticker: Sticker;
@@ -20,7 +21,7 @@ const StickerCard: React.FC<StickerCardProps> = ({ sticker, onPrint }) => {
     }
   };
 
-  // Функція для відкриття PDF в новому вікні
+  // Function to open PDF in a new window
   const openPdf = (e: React.MouseEvent) => {
     e.preventDefault();
     if (sticker.pdfUrl) {
@@ -28,127 +29,52 @@ const StickerCard: React.FC<StickerCardProps> = ({ sticker, onPrint }) => {
     }
   };
 
-  // Перевіряємо наявність превью URL для PDF
+  // Check if we have a preview URL for the PDF
   const hasPreview = sticker.previewUrl && !imageError;
 
   return (
-    <div className="sticker-card">
-      <h4>{sticker.name}</h4>
-      <p>Size: {sticker.size}</p>
-      
-      <div className="pdf-preview">
-        {hasPreview ? (
-          // Відображаємо зображення превью, якщо воно є
-          <img 
-            src={sticker.previewUrl} 
-            alt={`Preview for ${sticker.name}`}
-            onError={() => setImageError(true)}
-            className="preview-image"
-          />
-        ) : sticker.pdfUrl ? (
-          // Якщо превью немає, але є PDF - показуємо посилання
-          <div className="pdf-placeholder">
-            <a href="#" onClick={openPdf}>
+    <div className="border rounded-lg overflow-hidden bg-white shadow-sm flex flex-col">
+      <div className="p-4 flex-grow">
+        <h4 className="font-medium mb-1 truncate" title={sticker.name}>{sticker.name}</h4>
+        <p className="text-sm text-gray-500 mb-3">Size: {sticker.size}</p>
+        
+        <div className="h-36 flex items-center justify-center border rounded bg-gray-50 mb-3">
+          {hasPreview ? (
+            <img 
+              src={sticker.previewUrl} 
+              alt={`Preview for ${sticker.name}`}
+              onError={() => setImageError(true)}
+              className="max-w-full max-h-full object-contain"
+            />
+          ) : sticker.pdfUrl ? (
+            <a 
+              href="#" 
+              onClick={openPdf}
+              className="text-sm text-blue-500 hover:text-blue-700 border border-blue-500 hover:bg-blue-50 rounded px-3 py-2 transition-colors"
+            >
               Open PDF in new window
             </a>
-          </div>
-        ) : (
-          // Якщо взагалі нічого немає
-          <div className="pdf-placeholder">
-            No preview available
-          </div>
-        )}
+          ) : (
+            <span className="text-sm text-gray-400">
+              No preview available
+            </span>
+          )}
+        </div>
       </div>
       
       <button 
-        className="print-button"
+        className="w-full py-2 bg-blue-500 hover:bg-blue-600 text-white font-medium transition-colors flex items-center justify-center"
         onClick={handlePrintClick}
         disabled={isLoading}
       >
-        {isLoading ? 'Printing...' : 'Print'}
+        {isLoading ? (
+          <>
+            <Loader size="sm" className="mr-2" /> Printing...
+          </>
+        ) : (
+          'Print'
+        )}
       </button>
-      
-      <style dangerouslySetInnerHTML={{ __html: `
-        .sticker-card {
-          border: 1px solid #e0e0e0;
-          border-radius: 4px;
-          padding: 1rem;
-          background-color: white;
-          box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
-          display: flex;
-          flex-direction: column;
-        }
-        
-        .sticker-card h4 {
-          margin-top: 0;
-          margin-bottom: 0.5rem;
-          font-size: 1rem;
-        }
-        
-        .sticker-card p {
-          margin-top: 0;
-          margin-bottom: 1rem;
-          font-size: 0.8rem;
-          color: #888;
-        }
-        
-        .pdf-preview {
-          margin-bottom: 1rem;
-          display: flex;
-          justify-content: center;
-          align-items: center;
-          height: 150px;
-          border: 1px solid #e0e0e0;
-          border-radius: 4px;
-          overflow: hidden;
-          background-color: #f5f5f5;
-        }
-        
-        .preview-image {
-          max-width: 100%;
-          max-height: 100%;
-          object-fit: contain;
-        }
-        
-        .pdf-placeholder {
-          color: #888;
-          font-size: 14px;
-          text-align: center;
-          width: 100%;
-          height: 100%;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-        }
-        
-        .pdf-placeholder a {
-          color: #007aff;
-          text-decoration: none;
-          padding: 8px 12px;
-          border: 1px solid #007aff;
-          border-radius: 4px;
-        }
-        
-        .pdf-placeholder a:hover {
-          background-color: #007aff;
-          color: white;
-        }
-        
-        .print-button {
-          padding: 0.5rem;
-          background-color: #007aff;
-          color: white;
-          border: none;
-          border-radius: 4px;
-          cursor: pointer;
-          margin-top: auto;
-        }
-        
-        .print-button:disabled {
-          background-color: #cccccc;
-          cursor: not-allowed;
-        }
-      ` }} />
     </div>
   );
 };

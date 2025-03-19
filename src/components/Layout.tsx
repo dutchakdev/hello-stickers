@@ -46,30 +46,39 @@ const Layout: React.FC<LayoutProps> = ({ children, onSyncFromNotion, isSyncing =
   
   // Optimized theme toggle function
   const toggleTheme = async () => {
-    const newTheme = theme === 'light' ? 'dark' : 'light';
-    setTheme(newTheme);
-    
-    // Apply theme changes immediately
-    if (newTheme === 'dark') {
-      document.documentElement.classList.add('dark');
-    } else {
-      document.documentElement.classList.remove('dark');
-    }
-    
-    // Always ensure the zinc theme is applied
-    document.documentElement.classList.add('theme-zinc');
-    
-    // Save to local storage (fast operation)
-    localStorage.setItem('theme', newTheme);
-    localStorage.setItem('themeColor', 'zinc');
-    
-    // Save to database asynchronously (don't await, let it happen in background)
     try {
-      window.electron.ipcRenderer.invoke('db-save-general-settings', {
-        theme: newTheme
+      const newTheme = theme === 'light' ? 'dark' : 'light';
+      setTheme(newTheme);
+      
+      // Apply theme changes immediately
+      if (newTheme === 'dark') {
+        document.documentElement.classList.add('dark');
+      } else {
+        document.documentElement.classList.remove('dark');
+      }
+      
+      // Always ensure the zinc theme is applied
+      document.documentElement.classList.add('theme-zinc');
+      
+      // Save to local storage (fast operation)
+      localStorage.setItem('theme', newTheme);
+      localStorage.setItem('themeColor', 'zinc');
+      
+      // Save to database asynchronously
+      await window.electron.ipcRenderer.invoke('db-save-general-settings', {
+        theme: newTheme,
+        themeColor: 'zinc'
       });
     } catch (error) {
       console.error('Error saving theme preference:', error);
+      // Revert theme if save failed
+      const revertTheme = theme === 'dark' ? 'light' : 'dark';
+      setTheme(revertTheme);
+      if (revertTheme === 'dark') {
+        document.documentElement.classList.add('dark');
+      } else {
+        document.documentElement.classList.remove('dark');
+      }
     }
   };
 

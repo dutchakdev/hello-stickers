@@ -83,11 +83,6 @@ app.whenReady().then(() => {
   
   // Create window
   createWindow();
-  
-  // Create default stickers for products that don't have them
-  createDefaultStickersForProducts().catch(err => {
-    console.error('Error creating default stickers:', err);
-  });
 });
 
 // Quit when all windows are closed, except on macOS. There, it's common
@@ -354,6 +349,19 @@ function setupDatabaseIpcHandlers() {
   ipcMain.handle('db-get-general-settings', () => {
     return db.getGeneralSettings();
   });
+
+  ipcMain.handle('db-save-general-settings', async (event, settings) => {
+    try {
+      // Save each setting individually using createOrUpdateAppSetting
+      for (const [key, value] of Object.entries(settings)) {
+        await db.createOrUpdateAppSetting(key, value);
+      }
+      return { success: true };
+    } catch (error) {
+      console.error('Error saving general settings:', error);
+      throw error;
+    }
+  });
 }
 
 // IPC handler for synchronizing with Notion
@@ -366,43 +374,12 @@ ipcMain.handle('sync-notion', async (event) => {
     const result = await syncWithNotion();
     console.log('Notion sync result:', result);
     
-    // Створюємо наліпки за замовчуванням після синхронізації
-    await createDefaultStickersForProducts();
-    
     return result;
   } catch (error) {
     console.error('Error in sync-notion handler:', error);
     return { success: false, message: error.message };
   }
 });
-
-// Helper functions for Notion integration
-async function createStickers(productIds: string[]): Promise<void> {
-  try {
-    for (const productId of productIds) {
-      const product = await db.getProduct(productId);
-      if (!product) continue;
-      
-      const existingStickers = await db.getStickers(productId);
-      
-      if (existingStickers.length === 0) {
-        // Create a price tag sticker if none exists
-        await db.createSticker({
-          productId,
-          name: `${product.name} Price Tag`,
-          size: '50x30mm',
-          pdfUrl: null,
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString()
-        });
-        
-        console.log(`Created price tag sticker for ${product.name}`);
-      }
-    }
-  } catch (error) {
-    console.error('Error creating stickers:', error);
-  }
-}
 
 // Get available printers
 ipcMain.handle('get-available-printers', async () => {
@@ -504,52 +481,6 @@ ipcMain.handle('download-file', async (event, fileUrl, filePath) => {
     return { success: false, message: error.message };
   }
 });
-
-// Функція для створення наліпок за замовчуванням для продуктів, якщо вони відсутні
-async function createDefaultStickersForProducts() {
-  console.log('Creating default stickers for products if needed');
-  try {
-    const products = db.getProducts();
-    console.log(`Checking ${products.length} products for default stickers`);
-    
-    for (const product of products) {
-      try {
-        const stickers = db.getStickers(product.id);
-        console.log(`Product ${product.sku || product.id} has ${stickers.length} stickers`);
-        
-        if (stickers.length === 0) {
-          console.log(`Creating default price tag sticker for product ${product.sku || product.id}`);
-          
-          const defaultSticker = {
-            productId: product.id,
-            name: 'Price Tag',
-            size: 'Default',
-            pdfUrl: null,
-            previewUrl: null,
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString()
-          };
-          
-          const completeData = {
-            ...defaultSticker,
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString()
-          };
-          
-          const createdSticker = await db.createSticker(defaultSticker);
-          console.log(`Created default sticker with ID ${createdSticker.id}`);
-        }
-      } catch (error) {
-        console.error(`Error creating default stickers for product ${product.sku || product.id}:`, error);
-      }
-    }
-    
-    await db.saveDatabase();
-    console.log('Default stickers creation completed');
-  } catch (error) {
-    console.error('Error creating default stickers:', error);
-  }
-}
 
 // Функція для створення необхідних директорій
 function ensureDirectories() {

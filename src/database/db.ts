@@ -444,6 +444,16 @@ const dbMethods = {
     console.log(`Failed to delete app setting: key ${key} not found`);
     return false;
   },
+
+  getGeneralSettings() {
+    if (!isInitialized) this.initDatabase();
+    const settings = db.data.appSettings.reduce((acc, setting) => {
+      acc[setting.key] = setting.value;
+      return acc;
+    }, {} as Record<string, any>);
+    console.log('Fetching general settings');
+    return settings;
+  },
   
   // Clear database
   async clearProducts() {
@@ -482,5 +492,6 @@ export default {
   getAppSettings: dbMethods.getAppSettings,
   getAppSetting: dbMethods.getAppSetting,
   createOrUpdateAppSetting: dbMethods.createOrUpdateAppSetting,
-  deleteAppSetting: dbMethods.deleteAppSetting
+  deleteAppSetting: dbMethods.deleteAppSetting,
+  getGeneralSettings: dbMethods.getGeneralSettings
 }; 

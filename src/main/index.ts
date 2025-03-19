@@ -236,124 +236,125 @@ ipcMain.handle('get-app-path', () => {
 });
 
 // Database IPC handlers
-ipcMain.handle('db-get-products', async () => {
-  return db.getProducts();
-});
+function setupDatabaseIpcHandlers() {
+  // App settings handlers
+  ipcMain.handle('db:getAppSetting', async (event, key) => {
+    return db.getAppSetting(key);
+  });
+  
+  ipcMain.handle('db:createOrUpdateAppSetting', async (event, key, value) => {
+    return await db.createOrUpdateAppSetting(key, value);
+  });
+  
+  ipcMain.handle('db:deleteAppSetting', async (event, key) => {
+    return await db.deleteAppSetting(key);
+  });
+  
+  ipcMain.handle('db:getAllAppSettings', async () => {
+    return db.getAppSettings();
+  });
 
-ipcMain.handle('db-get-products-by-type', (event, type) => {
-  return db.getProductsByType(type);
-});
+  // Product handlers
+  ipcMain.handle('db-get-products', async () => {
+    return db.getProducts();
+  });
 
-ipcMain.handle('db-search-products', (event, query) => {
-  return db.searchProducts(query);
-});
+  ipcMain.handle('db-get-products-by-type', (event, type) => {
+    return db.getProductsByType(type);
+  });
 
-ipcMain.handle('db-get-product', (event, id) => {
-  return db.getProduct(id);
-});
+  ipcMain.handle('db-search-products', (event, query) => {
+    return db.searchProducts(query);
+  });
 
-ipcMain.handle('db-update-product', async (event, id, data) => {
-  return db.updateProduct(id, data);
-});
+  ipcMain.handle('db-get-product', (event, id) => {
+    return db.getProduct(id);
+  });
 
-ipcMain.handle('db-get-stickers', async (event, productId) => {
-  try {
-    console.log(`Fetching stickers for product ${productId}`);
-    const stickers = db.getStickers(productId);
-    console.log(`Found ${stickers.length} stickers for product ${productId}`);
-    return stickers;
-  } catch (error) {
-    console.error(`Error fetching stickers for product ${productId}:`, error);
-    return [];
-  }
-});
+  ipcMain.handle('db-update-product', async (event, id, data) => {
+    return db.updateProduct(id, data);
+  });
 
-ipcMain.handle('db-update-sticker', async (event, id, data) => {
-  return db.updateSticker(id, data);
-});
-
-ipcMain.handle('db-get-printer-settings', async () => {
-  try {
-    return db.getPrinterSettings();
-  } catch (error) {
-    console.error('Error getting printer settings:', error);
-    throw error;
-  }
-});
-
-ipcMain.handle('db-get-printer-setting', async (event, size) => {
-  try {
-    // Get all printer settings and filter by size
-    const settings = db.getPrinterSettings();
-    const setting = settings.find(s => s.size === size);
-    return setting || null;
-  } catch (error) {
-    console.error(`Error getting printer setting for size ${size}:`, error);
-    throw error;
-  }
-});
-
-ipcMain.handle('db-create-printer-setting', async (event, printerSetting) => {
-  try {
-    return await db.createPrinterSetting(printerSetting);
-  } catch (error) {
-    console.error('Error creating printer setting:', error);
-    throw error;
-  }
-});
-
-ipcMain.handle('db-delete-printer-setting', async (event, settingId) => {
-  try {
-    // Try to use getPrinterSettings and filter for the specific one
-    const settings = db.getPrinterSettings();
-    const settingToDelete = settings.find(s => s.id === settingId);
-    
-    if (settingToDelete) {
-      // If we have a proper delete method, use it
-      // Otherwise, would need to implement it in the db module
-      console.log(`Deleting printer setting: ${settingId}`);
-      // db.deletePrinterSetting(settingId);
-      return { success: true, message: 'Printer setting deleted' };
-    } else {
-      return { success: false, message: 'Printer setting not found' };
+  // Sticker handlers
+  ipcMain.handle('db-get-stickers', async (event, productId) => {
+    try {
+      console.log(`Fetching stickers for product ${productId}`);
+      const stickers = db.getStickers(productId);
+      console.log(`Found ${stickers.length} stickers for product ${productId}`);
+      return stickers;
+    } catch (error) {
+      console.error(`Error fetching stickers for product ${productId}:`, error);
+      return [];
     }
-  } catch (error) {
-    console.error('Error deleting printer setting:', error);
-    throw error;
-  }
-});
+  });
 
-ipcMain.handle('db-get-notion-settings', async () => {
-  return db.getNotionSetting();
-});
+  ipcMain.handle('db-update-sticker', async (event, id, data) => {
+    return db.updateSticker(id, data);
+  });
 
-ipcMain.handle('db-save-notion-settings', async (event, settings) => {
-  return db.createOrUpdateNotionSetting(settings);
-});
-
-ipcMain.handle('db-get-google-drive-settings', async () => {
-  return db.getGoogleDriveSetting();
-});
-
-// Update Google Drive settings handler
-ipcMain.handle('db-save-google-drive-settings', async (event, settings) => {
-  try {
-    // Parse and validate the service account JSON
-    const serviceAccount = JSON.parse(settings.serviceAccountJson);
-    
-    // Check for required fields in the service account JSON
-    if (!serviceAccount.client_email || !serviceAccount.private_key) {
-      console.error('Missing required fields in service account JSON');
-      return { success: false, message: 'Invalid service account JSON format' };
+  // Printer settings handlers
+  ipcMain.handle('db-get-printer-settings', async () => {
+    try {
+      return db.getPrinterSettings();
+    } catch (error) {
+      console.error('Error getting printer settings:', error);
+      throw error;
     }
-    
-    // Save the settings
-    return db.createOrUpdateGoogleDriveSetting(settings);
-  } catch (error) {
-    console.error('Error saving Google Drive settings:', error);
-    throw error;
-  }
-});
+  });
+
+  ipcMain.handle('db-get-printer-setting', async (event, size) => {
+    try {
+      const settings = db.getPrinterSettings();
+      const setting = settings.find(s => s.size === size);
+      return setting || null;
+    } catch (error) {
+      console.error(`Error getting printer setting for size ${size}:`, error);
+      throw error;
+    }
+  });
+
+  ipcMain.handle('db-create-printer-setting', async (event, printerSetting) => {
+    try {
+      return await db.createPrinterSetting(printerSetting);
+    } catch (error) {
+      console.error('Error creating printer setting:', error);
+      throw error;
+    }
+  });
+
+  // Notion settings handlers
+  ipcMain.handle('db-get-notion-settings', async () => {
+    return db.getNotionSetting();
+  });
+
+  ipcMain.handle('db-save-notion-settings', async (event, settings) => {
+    return db.createOrUpdateNotionSetting(settings);
+  });
+
+  // Google Drive settings handlers
+  ipcMain.handle('db-get-google-drive-settings', async () => {
+    return db.getGoogleDriveSetting();
+  });
+
+  ipcMain.handle('db-save-google-drive-settings', async (event, settings) => {
+    try {
+      const serviceAccount = JSON.parse(settings.serviceAccountJson);
+      if (!serviceAccount.client_email || !serviceAccount.private_key) {
+        console.error('Missing required fields in service account JSON');
+        return { success: false, message: 'Invalid service account JSON format' };
+      }
+      return db.createOrUpdateGoogleDriveSetting(settings);
+    } catch (error) {
+      console.error('Error saving Google Drive settings:', error);
+      throw error;
+    }
+  });
+
+  // General settings handler
+  ipcMain.handle('db-get-general-settings', () => {
+    return db.getGeneralSettings();
+  });
+}
 
 // IPC handler for synchronizing with Notion
 ipcMain.handle('sync-notion', async (event) => {
@@ -684,24 +685,4 @@ ipcMain.handle('create-sticker', async (event, stickerData) => {
     console.error('Error creating sticker:', error);
     throw error;
   }
-});
-
-// Setup IPC handlers for database operations
-function setupDatabaseIpcHandlers() {
-  // App settings handlers
-  ipcMain.handle('db:getAppSetting', async (event, key) => {
-    return db.getAppSetting(key);
-  });
-  
-  ipcMain.handle('db:createOrUpdateAppSetting', async (event, key, value) => {
-    return await db.createOrUpdateAppSetting(key, value);
-  });
-  
-  ipcMain.handle('db:deleteAppSetting', async (event, key) => {
-    return await db.deleteAppSetting(key);
-  });
-  
-  ipcMain.handle('db:getAllAppSettings', async () => {
-    return db.getAppSettings();
-  });
-} 
+}); 

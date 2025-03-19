@@ -86,8 +86,29 @@ const defaultData: DatabaseSchema = {
   printerSettings: [
     {
       id: '1',
-      size: '50x30mm',
-      printerName: 'Default Printer',
+      size: '40x50',
+      printerName: 'GD_41_LABEL',
+      options: {
+        media: 'Custom.40x50mm',
+        orientation: 'portrait',
+        margins: {
+          top: 0,
+          right: 0,
+          bottom: 0,
+          left: 0,
+          units: 'mm'
+        },
+        scale: 100,
+        fitToPage: true,
+        printScaling: 'fit'
+      },
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    },
+    {
+      id: '2',
+      size: '50x30',
+      printerName: 'GD_41_LABEL',
       options: {
         media: 'Custom.50x30mm',
         orientation: 'portrait',
@@ -104,18 +125,31 @@ const defaultData: DatabaseSchema = {
       },
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString()
+    },
+    {
+      id: '3',
+      size: '50x40',
+      printerName: 'GD_41_LABEL',
+      options: {
+        media: 'Custom.50x40mm',
+        orientation: 'portrait',
+        margins: {
+          top: 0,
+          right: 0,
+          bottom: 0,
+          left: 0,
+          units: 'mm'
+        },
+        scale: 100,
+        fitToPage: true,
+        printScaling: 'fit'
+      },
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
     }
   ],
-  notionSetting: {
-    id: '1',
-    apiKey: '',
-    databaseId: '',
-    lastSyncedAt: null
-  },
-  googleDriveSetting: {
-    id: '1',
-    serviceAccountJson: ''
-  },
+  notionSetting: null,
+  googleDriveSetting: null,
   appSettings: []
 };
 
@@ -364,44 +398,34 @@ const dbMethods = {
     return newSetting;
   },
 
-  async updatePrinterSettings(settings: { printerName: string }) {
+  async updatePrinterSettings(setting: PrinterSetting) {
     if (!isInitialized) this.initDatabase();
-    const existingSettings = this.getPrinterSettings();
-    const existingSetting = existingSettings[0]; // We're using the first setting as default
+    console.log(`Updating printer setting for size ${setting.size}`);
     
-    if (existingSetting) {
+    const index = db.data.printerSettings.findIndex(s => s.size === setting.size);
+    
+    if (index !== -1) {
       // Update existing setting
-      const updatedSetting = {
-        ...existingSetting,
-        printerName: settings.printerName,
+      console.log(`Found existing printer setting for size ${setting.size}, updating`);
+      db.data.printerSettings[index] = {
+        ...setting,
         updatedAt: new Date().toISOString()
       };
-      db.data.printerSettings[0] = updatedSetting;
-      await saveDatabase();
-      return updatedSetting;
     } else {
       // Create new setting
-      return await this.createPrinterSetting({
-        size: '50x30mm', // Default size
-        printerName: settings.printerName,
-        options: {
-          media: 'Custom.50x30mm',
-          orientation: 'portrait',
-          margins: {
-            top: 0,
-            right: 0,
-            bottom: 0,
-            left: 0,
-            units: 'mm'
-          },
-          scale: 100,
-          fitToPage: true,
-          printScaling: 'fit'
-        },
+      console.log(`No printer setting found for size ${setting.size}, creating new one`);
+      db.data.printerSettings.push({
+        ...setting,
+        id: Date.now().toString(),
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString()
       });
     }
+    
+    await saveDatabase();
+    const updatedSetting = db.data.printerSettings.find(s => s.size === setting.size);
+    console.log(`Updated printer setting: ${JSON.stringify(updatedSetting)}`);
+    return updatedSetting;
   },
 
   async deletePrinterSetting(size: string) {
@@ -555,6 +579,7 @@ export default {
   getGoogleDriveSetting: dbMethods.getGoogleDriveSetting,
   createOrUpdateGoogleDriveSetting: dbMethods.createOrUpdateGoogleDriveSetting,
   getPrinterSettings: dbMethods.getPrinterSettings,
+  getPrinterSetting: dbMethods.getPrinterSetting,
   createPrinterSetting: dbMethods.createPrinterSetting,
   updatePrinterSettings: dbMethods.updatePrinterSettings,
   clearProducts: dbMethods.clearProducts,

@@ -3,23 +3,37 @@ import { Sticker } from '../database/db';
 import { Card, CardContent, CardFooter } from './ui/card';
 import { Button } from './ui/button';
 import { Loader2, FileText, Printer } from 'lucide-react';
+import { useToast } from './ui/use-toast';
 
 export interface StickerCardProps {
   sticker: Sticker;
-  onPrint?: () => void;
+  onPrint?: () => Promise<{ success: boolean; message?: string }>;
 }
 
 const StickerCard: React.FC<StickerCardProps> = ({ sticker, onPrint }) => {
   const [isLoading, setIsLoading] = useState(false);
   const [imageError, setImageError] = useState(false);
+  const { toast } = useToast();
 
-  const handlePrintClick = () => {
+  const handlePrintClick = async () => {
     if (onPrint) {
       setIsLoading(true);
-      setTimeout(() => {
-        onPrint();
+      try {
+        const result = await onPrint();
+        toast({
+          title: result.success ? 'Success' : 'Error',
+          description: result.message,
+          variant: result.success ? 'default' : 'destructive',
+        });
+      } catch (error) {
+        toast({
+          title: 'Error',
+          description: error instanceof Error ? error.message : 'Failed to print sticker',
+          variant: 'destructive',
+        });
+      } finally {
         setIsLoading(false);
-      }, 1000);
+      }
     }
   };
 

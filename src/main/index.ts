@@ -173,6 +173,140 @@ ipcMain.handle('print-pdf', async (event, { filePath, printerName, copies = 1, o
   });
 });
 
+// Handle printing a sticker
+ipcMain.handle('print-sticker', async (event, stickerId) => {
+  try {
+    // Get the sticker
+    const sticker = db.getSticker(stickerId);
+    if (!sticker) {
+      console.error(`Sticker not found: ${stickerId}`);
+      return { success: false, message: 'Sticker not found' };
+    }
+    
+    console.log(`Found sticker with size: ${sticker.size}`);
+
+    // Get printer settings for the sticker size
+    const settings = db.getPrinterSettings();
+    console.log(`Available printer settings: ${settings.map(s => s.size).join(', ')}`);
+    
+    const printerSetting = settings.find(s => s.size === sticker.size);
+    
+    if (!printerSetting) {
+      console.error(`No printer setting found for size: ${sticker.size}`);
+      return { success: false, message: `No printer configured for size: ${sticker.size}` };
+    }
+    
+    console.log(`Using printer setting: ${JSON.stringify(printerSetting)}`);
+
+    // Get the PDF path
+    let pdfPath = '';
+    if (sticker.localPdfPath && fs.existsSync(sticker.localPdfPath)) {
+      pdfPath = sticker.localPdfPath;
+    } else if (sticker.pdfUrl && sticker.pdfUrl.startsWith('app://pdfs/')) {
+      const pdfFileName = sticker.pdfUrl.replace('app://pdfs/', '');
+      pdfPath = path.join(downloadedPdfsPath, pdfFileName);
+    }
+
+    if (!pdfPath || !fs.existsSync(pdfPath)) {
+      console.error(`PDF file not found for sticker: ${stickerId}`);
+      return { success: false, message: 'PDF file not found' };
+    }
+
+    // Start with basic printer command
+    let printCommand = `lp -d "${printerSetting.printerName}"`;
+    
+    // Add options from the printer settings if available
+    if (printerSetting.options) {
+      // Add media size
+      if (printerSetting.options.media) {
+        printCommand += ` -o media=${printerSetting.options.media}`;
+      } else if (printerSetting.size) {
+        // Extract dimensions from size and create custom media size
+        const sizeParts = printerSetting.size.toLowerCase().split('x');
+        if (sizeParts.length === 2) {
+          const width = sizeParts[0].replace(/\D/g, '');
+          const height = sizeParts[1].replace(/\D/g, '');
+          printCommand += ` -o media=Custom.${width}x${height}mm`;
+        }
+      }
+      
+      // Add orientation
+      if (printerSetting.options.orientation) {
+        const orientationValue = printerSetting.options.orientation === 'landscape' ? '4' : '3';
+        printCommand += ` -o orientation-requested=${orientationValue}`;
+      }
+      
+      // Add scaling
+      if (printerSetting.options.scale && printerSetting.options.scale !== 100) {
+        printCommand += ` -o scaling=${printerSetting.options.scale}`;
+      }
+      
+      // Add fit-to-page option
+      if (printerSetting.options.fitToPage) {
+        printCommand += ` -o fit-to-page`;
+      }
+      
+      // Add print scaling option
+      if (printerSetting.options.printScaling) {
+        printCommand += ` -o print-scaling=${printerSetting.options.printScaling}`;
+      }
+      
+      // Add margin options if present
+      if (printerSetting.options.margins) {
+        const { top, right, bottom, left, units } = printerSetting.options.margins;
+        
+        // Convert margins to points based on the units
+        const toPoints = (value: number, unit: string) => {
+          if (unit === 'mm') return value * 2.83465; // 1mm = 2.83465pt
+          if (unit === 'in') return value * 72; // 1in = 72pt
+          return value; // Already in points
+        };
+        
+        // Add each margin with proper unit conversion
+        if (top !== undefined) printCommand += ` -o page-top=${toPoints(top, units)}pt`;
+        if (right !== undefined) printCommand += ` -o page-right=${toPoints(right, units)}pt`;
+        if (bottom !== undefined) printCommand += ` -o page-bottom=${toPoints(bottom, units)}pt`;
+        if (left !== undefined) printCommand += ` -o page-left=${toPoints(left, units)}pt`;
+      }
+    }
+    
+    // Add file path at the end
+    printCommand += ` "${pdfPath}"`;
+    console.log(`Printing with command: ${printCommand}`);
+    
+    // Execute print command
+    try {
+      const result = await new Promise((resolve, reject) => {
+        exec(printCommand, (error, stdout, stderr) => {
+          if (error) {
+            console.error(`Print error: ${error.message}`);
+            if (stderr) {
+              console.error(`Error stderr: ${stderr}`);
+            }
+            reject(error);
+            return;
+          }
+          
+          if (stderr && stderr.trim() !== '') {
+            console.warn(`Print stderr: ${stderr}`);
+          }
+          
+          console.log(`Print stdout: ${stdout}`);
+          resolve({ success: true, stdout });
+        });
+      });
+      
+      return { success: true, message: 'Sticker sent to printer' };
+    } catch (error) {
+      console.error('Error executing print command:', error);
+      return { success: false, message: `Failed to print: ${error.message}` };
+    }
+  } catch (error) {
+    console.error('Error printing sticker:', error);
+    return { success: false, message: error.message || 'An unexpected error occurred' };
+  }
+});
+
 // IPC handlers for file operations
 ipcMain.handle('save-file', async (event, { data, fileName, directory }) => {
   const targetDir = directory === 'stickers' 
@@ -393,139 +527,44 @@ ipcMain.handle('sync-notion', async (event) => {
 
 // Get available printers
 ipcMain.handle('get-available-printers', async () => {
-  if (mainWindow) {
+  return new Promise((resolve, reject) => {
     try {
-      const printers = await mainWindow.webContents.getPrintersAsync();
-      return printers.map(printer => printer.name);
-    } catch (error) {
-      console.error('Error getting printers:', error);
-      return [];
-    }
-  }
-  return [];
-});
-
-// Handle printing a sticker
-ipcMain.handle('print-sticker', async (event, stickerId) => {
-  try {
-    const sticker = db.getSticker(stickerId);
-    if (!sticker || !sticker.pdfUrl) {
-      return { success: false, message: 'Sticker not found or PDF URL not available' };
-    }
-    
-    // Extract PDF path from the app:// URL
-    const pdfUrl = sticker.pdfUrl;
-    const pdfPath = pdfUrl.replace('app://pdfs/', '');
-    const fullPdfPath = path.join(downloadedPdfsPath, pdfPath);
-    
-    if (!fs.existsSync(fullPdfPath)) {
-      return { success: false, message: `PDF file not found at ${fullPdfPath}` };
-    }
-    
-    // Get printer settings for the sticker size
-    const settings = db.getPrinterSettings();
-    const printerSetting = settings.find(s => s.size === sticker.size);
-    
-    if (!printerSetting) {
-      return { success: false, message: `No printer setting for size ${sticker.size}` };
-    }
-    
-    // Actually print the file using the print-pdf handler
-    try {
-      const printResult = await new Promise((resolve, reject) => {
-        const command = `lp -d "${printerSetting.printerName}" -n 1`;
-        let options = '';
-        
-        // Add orientation option
-        if (printerSetting.options.orientation) {
-          const orientationValue = printerSetting.options.orientation === 'landscape' ? '4' : '3';
-          options += ` -o orientation-requested=${orientationValue}`;
-        }
-        
-        // Add margins if specified
-        if (printerSetting.options.margins) {
-          const { top, right, bottom, left, units } = printerSetting.options.margins;
-          // Convert margins to points (1/72 inch) as required by CUPS
-          const toPoints = (value: number, unit: string) => {
-            switch (unit) {
-              case 'mm':
-                return value * 2.83465; // 1mm = 2.83465pt
-              case 'in':
-                return value * 72; // 1in = 72pt
-              case 'pt':
-                return value;
-              default:
-                return value;
-            }
-          };
-          
-          const marginTop = toPoints(top, units);
-          const marginRight = toPoints(right, units);
-          const marginBottom = toPoints(bottom, units);
-          const marginLeft = toPoints(left, units);
-          
-          options += ` -o page-top=${marginTop}pt`;
-          options += ` -o page-right=${marginRight}pt`;
-          options += ` -o page-bottom=${marginBottom}pt`;
-          options += ` -o page-left=${marginLeft}pt`;
-        }
-        
-        // Add scaling option
-        if (printerSetting.options.scale) {
-          options += ` -o scaling=${printerSetting.options.scale}`;
-        }
-        
-        // Add fit-to-page option
-        if (printerSetting.options.fitToPage) {
-          options += ` -o fit-to-page`;
-        }
-        
-        // Add print scaling option
-        if (printerSetting.options.printScaling) {
-          switch (printerSetting.options.printScaling) {
-            case 'none':
-              options += ` -o print-scaling=none`;
-              break;
-            case 'fit':
-              options += ` -o print-scaling=fit`;
-              break;
-            case 'fill':
-              options += ` -o print-scaling=fill`;
-              break;
-          }
-        }
-        
-        // Add media size
-        if (printerSetting.options.media) {
-          options += ` -o media=${printerSetting.options.media}`;
-        }
-        
-        const fullCommand = `${command}${options} "${fullPdfPath}"`;
-        console.log(`Executing print command: ${fullCommand}`);
-        
-        exec(fullCommand, (error, stdout, stderr) => {
+      if (platform() === 'darwin') {
+        // macOS: Use lpstat to get printer list
+        exec('lpstat -p | grep -o "printer [^ ]* is" | cut -d " " -f 2', (error, stdout, stderr) => {
           if (error) {
-            console.error(`Print error: ${error.message}`);
-            reject(error);
+            console.error('Error getting printers:', error);
+            resolve([]);
             return;
           }
-          if (stderr) {
-            console.error(`Print stderr: ${stderr}`);
-          }
-          resolve({ success: true, stdout });
+          
+          const printers = stdout.trim().split('\n').filter(Boolean);
+          console.log('Available printers:', printers);
+          resolve(printers);
         });
-      });
-      
-      console.log(`Print result: ${JSON.stringify(printResult)}`);
-      return { success: true, message: 'Sticker sent to printer' };
-    } catch (printError) {
-      console.error('Error during printing:', printError);
-      return { success: false, message: `Printing failed: ${printError.message}` };
+      } else if (platform() === 'win32') {
+        // Windows: Use wmic to get printer list
+        exec('wmic printer get name', (error, stdout, stderr) => {
+          if (error) {
+            console.error('Error getting printers:', error);
+            resolve([]);
+            return;
+          }
+          
+          // Parse output, skipping the header line
+          const printers = stdout.trim().split('\n').slice(1).map(p => p.trim()).filter(Boolean);
+          console.log('Available printers:', printers);
+          resolve(printers);
+        });
+      } else {
+        console.warn('Unsupported platform for printer listing');
+        resolve([]);
+      }
+    } catch (error) {
+      console.error('Error listing printers:', error);
+      resolve([]);
     }
-  } catch (error) {
-    console.error('Error printing sticker:', error);
-    return { success: false, message: error.message };
-  }
+  });
 });
 
 // Clear products before syncing

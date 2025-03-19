@@ -254,18 +254,13 @@ const App: React.FC = () => {
   const handlePrint = async (sticker: Sticker) => {
     try {
       console.log(`Printing sticker: ${sticker.name}`);
-      
-      // Call the main process to print the sticker
-      const result = await window.electron.ipcRenderer.invoke('print-sticker', sticker.id);
-      
-      if (result.success) {
-        alert('Sticker sent to printer');
-      } else {
-        alert(`Failed to print: ${result.error}`);
-      }
+      return await window.electron.ipcRenderer.invoke('print-sticker', sticker.id);
     } catch (error) {
       console.error('Error printing sticker:', error);
-      alert('Failed to print sticker');
+      return {
+        success: false,
+        message: error instanceof Error ? error.message : 'Failed to print sticker'
+      };
     }
   };
 

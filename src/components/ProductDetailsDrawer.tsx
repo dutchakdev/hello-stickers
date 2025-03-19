@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Drawer, DrawerContent, DrawerHeader, DrawerTitle, DrawerBody } from './ui/drawer';
 import { Button } from './ui/button';
-import { X } from 'lucide-react';
+import { X, Loader2 } from 'lucide-react';
 import { Product, Sticker } from '../database/db';
 import { Skeleton } from './ui/skeleton';
 
@@ -18,6 +18,7 @@ const ProductDetailsDrawer: React.FC<ProductDetailsDrawerProps> = ({
 }) => {
   const [stickers, setStickers] = useState<Sticker[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [printingStickers, setPrintingStickers] = useState<Record<string, boolean>>({});
   
   useEffect(() => {
     const fetchStickers = async () => {
@@ -40,9 +41,25 @@ const ProductDetailsDrawer: React.FC<ProductDetailsDrawerProps> = ({
     }
   }, [product?.id, isOpen]);
 
-  const handlePrint = (sticker: Sticker) => {
+  const handlePrint = async (sticker: Sticker) => {
     console.log(`Printing sticker: ${sticker.name}`);
-    window.electron.ipcRenderer.invoke('print-sticker', sticker.id);
+    
+    // Set loading state for this specific sticker
+    setPrintingStickers(prev => ({ ...prev, [sticker.id]: true }));
+    
+    try {
+      const result = await window.electron.ipcRenderer.invoke('print-sticker', sticker.id);
+      console.log('Print result:', result);
+      
+      if (!result.success) {
+        console.error('Print failed:', result.message, result.details);
+      }
+    } catch (error) {
+      console.error('Error printing sticker:', error);
+    } finally {
+      // Reset loading state
+      setPrintingStickers(prev => ({ ...prev, [sticker.id]: false }));
+    }
   };
 
   return (
@@ -140,8 +157,16 @@ const ProductDetailsDrawer: React.FC<ProductDetailsDrawerProps> = ({
                     <Button 
                       className="w-full bg-blue-500 hover:bg-blue-600 text-white"
                       onClick={() => handlePrint(sticker)}
+                      disabled={printingStickers[sticker.id]}
                     >
-                      Print
+                      {printingStickers[sticker.id] ? (
+                        <>
+                          <Loader2 className="w-4 h-4 mr-2 animate-spin" /> 
+                          Printing...
+                        </>
+                      ) : (
+                        'Print'
+                      )}
                     </Button>
                   </div>
                 </div>

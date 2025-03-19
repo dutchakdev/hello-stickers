@@ -121,7 +121,11 @@ const ProductDetailsDrawer: React.FC<ProductDetailsDrawerProps> = ({
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               {stickers.map(sticker => (
-                <div key={sticker.id} className="sticker-card border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
+                <div 
+                  key={sticker.id} 
+                  className="sticker-card border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden cursor-pointer hover:shadow-md transition-shadow"
+                  onClick={() => !printingStickers[sticker.id] && handlePrint(sticker)}
+                >
                   <div className="p-4">
                     <h4 className="font-medium">{sticker.name}</h4>
                     <p className="text-sm text-gray-500">Size: {sticker.size}</p>
@@ -155,8 +159,7 @@ const ProductDetailsDrawer: React.FC<ProductDetailsDrawerProps> = ({
                   
                   <div className="p-4 border-t">
                     <Button 
-                      className="w-full bg-blue-500 hover:bg-blue-600 text-white"
-                      onClick={() => handlePrint(sticker)}
+                      className={`w-full ${printingStickers[sticker.id] ? 'bg-gray-500' : 'bg-blue-500 hover:bg-blue-600'} text-white`}
                       disabled={printingStickers[sticker.id]}
                     >
                       {printingStickers[sticker.id] ? (

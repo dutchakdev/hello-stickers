@@ -350,20 +350,12 @@ const App: React.FC = () => {
         </div>
       </div>
       
-      <SearchBar onSearch={handleSearch} />
-      
-      <div className="mb-4">
-        <select 
-          value={selectedType} 
-          onChange={(e) => handleFilterByType(e.target.value)}
-          className="p-2 border rounded"
-        >
-          <option value="all">All Types</option>
-          {productTypes.map(type => (
-            <option key={type} value={type}>{type}</option>
-          ))}
-        </select>
-      </div>
+      <SearchBar 
+        onSearch={handleSearch} 
+        selectedType={selectedType}
+        productTypes={productTypes}
+        onFilterByType={handleFilterByType}
+      />
       
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
         {isLoading ? (

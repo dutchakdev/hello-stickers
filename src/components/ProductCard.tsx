@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Product } from '../database/db';
 import { Card, CardContent } from './ui/card';
 import { cn } from '../utils/cn';
-import { ImageOff } from 'lucide-react';
+import { BarcodeIcon, ImageOff } from 'lucide-react';
 
 interface ProductCardProps {
   product: Product;
@@ -49,21 +49,16 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, isSelected, onClick 
         <h3 className="text-base font-medium mb-2 text-gray-900 dark:text-gray-100 line-clamp-1">{product.name}</h3>
         <div className="space-y-1">
           <p className="text-sm font-mono text-gray-700 dark:text-gray-300">SKU: {product.sku}</p>
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <span className="px-2 py-1 text-xs rounded-full bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-100">
               {product.type}
             </span>
-            {product.price && (
-              <span className="px-2 py-1 text-xs rounded-full bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-100">
-                ${product.price.toFixed(2)}
+            {product.barcode && (
+              <span className="flex items-center text-xs font-mono text-gray-500 dark:text-gray-400">
+                <BarcodeIcon className="w-4 h-4 mr-1" /> {product.barcode}
               </span>
             )}
           </div>
-          {product.barcode && (
-            <p className="text-xs font-mono mt-2 text-gray-500 dark:text-gray-400">
-              Barcode: {product.barcode}
-            </p>
-          )}
         </div>
       </CardContent>
     </Card>
